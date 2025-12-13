@@ -11,8 +11,3 @@ export default defineConfig({
     vue(),
   ],
 })
-
-laravel({
-  input: ['resources/js/app.js', 'resources/css/app.css'],
-  refresh: true,
-})
