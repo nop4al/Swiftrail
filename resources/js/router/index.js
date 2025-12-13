@@ -12,6 +12,11 @@ import OrderConfirmation from '../components/OrderConfirmation.vue'
 import PaymentMethods from '../components/PaymentMethods.vue'
 import Checkout from '../components/Checkout.vue'
 import PaymentSuccess from '../components/PaymentSuccess.vue'
+import CheckRefund from '../components/CheckRefund.vue'
+import ETicket from '../components/ETicket.vue'
+import MyTicket from '../components/MyTicket.vue'
+import Refund from '../components/Refund.vue'
+import Tracking from '../components/Tracking.vue'
 
 const routes = [
   {
@@ -84,6 +89,31 @@ const routes = [
     path: '/payment-success',
     name: 'PaymentSuccess',
     component: PaymentSuccess
+  },
+  {
+    path: '/check-refund',
+    name: 'CheckRefund',
+    component: CheckRefund
+  },
+  {
+    path: '/eticket',
+    name: 'ETicket',
+    component: ETicket
+  },
+  {
+    path: '/my-ticket',
+    name: 'MyTicket',
+    component: MyTicket
+  },
+  {
+    path: '/refund',
+    name: 'Refund',
+    component: Refund
+  },
+  {
+    path: '/tracking',
+    name: 'Tracking',
+    component: Tracking
   }
 ]
 
