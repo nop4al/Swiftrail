@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\{
     ScheduleController,
     RefundController
 };
+use App\Http\Controllers\BookingController;
 
 Route::prefix('v1')->middleware('api')->group(function () {
     // ========== Health & Info Endpoints ==========
@@ -28,6 +29,10 @@ Route::prefix('v1')->middleware('api')->group(function () {
 
     // ========== Authenticated Endpoints ==========
     Route::middleware('auth:sanctum')->group(function () {
+        // Bookings/Tickets
+        Route::prefix('bookings')->group(function () {
+            Route::get('/', [BookingController::class, 'index']);
+        });
         // Auth endpoints
         Route::prefix('auth')->group(function () {
             Route::post('/logout', [AuthController::class, 'logout']);

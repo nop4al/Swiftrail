@@ -75,6 +75,8 @@ const newTrain = ref({
   capacity: '',
   status: 'active'
 })
+const isLoadingTrain = ref(false)
+const trainMessage = ref({ type: '', text: '' })
 
 const expandedTrainId = ref(null)
 const showAddScheduleToTrain = ref(null)
@@ -84,6 +86,90 @@ const newScheduleForTrain = ref({
   arrivalTime: '',
   days: 'Setiap Hari'
 })
+
+const showNewRouteForm = ref(false)
+const newRoute = ref({
+  code: '',
+  origin: '',
+  destination: '',
+  stops: '',
+  departureTime: '',
+  estimatedDuration: '',
+  distance: '',
+  status: 'active'
+})
+const routeMessage = ref({ type: '', text: '' })
+const isLoadingRoute = ref(false)
+
+const handleAddRoute = async () => {
+  if (!newRoute.value.code.trim()) {
+    routeMessage.value = { type: 'error', text: 'Kode Rute tidak boleh kosong' }
+    return
+  }
+  if (!newRoute.value.origin.trim()) {
+    routeMessage.value = { type: 'error', text: 'Stasiun awal tidak boleh kosong' }
+    return
+  }
+  if (!newRoute.value.destination.trim()) {
+    routeMessage.value = { type: 'error', text: 'Stasiun tujuan tidak boleh kosong' }
+    return
+  }
+  if (!newRoute.value.departureTime) {
+    routeMessage.value = { type: 'error', text: 'Jam keberangkatan tidak boleh kosong' }
+    return
+  }
+  if (!newRoute.value.estimatedDuration || parseInt(newRoute.value.estimatedDuration) <= 0) {
+    routeMessage.value = { type: 'error', text: 'Durasi perjalanan harus lebih dari 0' }
+    return
+  }
+  if (routes.value.some(r => r.code === newRoute.value.code)) {
+    routeMessage.value = { type: 'error', text: 'Kode Rute sudah ada' }
+    return
+  }
+
+  isLoadingRoute.value = true
+  routeMessage.value = { type: '', text: '' }
+
+  try {
+    const id = Math.max(...routes.value.map(r => r.id), 0) + 1
+    routes.value.push({
+      id,
+      code: newRoute.value.code.trim(),
+      origin: newRoute.value.origin.trim(),
+      destination: newRoute.value.destination.trim(),
+      stops: newRoute.value.stops.trim().split(',').filter(s => s.trim()),
+      departureTime: newRoute.value.departureTime,
+      estimatedDuration: parseInt(newRoute.value.estimatedDuration),
+      distance: newRoute.value.distance.trim(),
+      status: newRoute.value.status,
+      createdAt: new Date().toISOString()
+    })
+
+    routeMessage.value = { type: 'success', text: 'Rute berhasil ditambahkan' }
+    showNewRouteForm.value = false
+    newRoute.value = { code: '', origin: '', destination: '', stops: '', departureTime: '', estimatedDuration: '', distance: '', status: 'active' }
+
+    setTimeout(() => {
+      routeMessage.value = { type: '', text: '' }
+    }, 3000)
+  } catch (error) {
+    routeMessage.value = { type: 'error', text: 'Gagal menambahkan rute' }
+  } finally {
+    isLoadingRoute.value = false
+  }
+}
+
+const handleDeleteRoute = (id) => {
+  if (!confirm('Yakin ingin menghapus rute ini?')) return
+  const index = routes.value.findIndex(r => r.id === id)
+  if (index !== -1) {
+    routes.value.splice(index, 1)
+    routeMessage.value = { type: 'success', text: 'Rute berhasil dihapus' }
+    setTimeout(() => {
+      routeMessage.value = { type: '', text: '' }
+    }, 3000)
+  }
+}
 
 const handleAddRefund = () => {
   if (!newRefundForm.value.orderId || !newRefundForm.value.amount) {
@@ -161,29 +247,71 @@ const handleDeleteSchedule = (id) => {
   }
 }
 
-const handleAddTrain = () => {
-  if (!newTrain.value.code || !newTrain.value.name || !newTrain.value.type || !newTrain.value.capacity) {
-    alert('Silakan isi semua field')
+const handleAddTrain = async () => {
+  // Validation
+  if (!newTrain.value.code.trim()) {
+    trainMessage.value = { type: 'error', text: 'Kode Kereta tidak boleh kosong' }
     return
   }
-  const id = Math.max(...trains.value.map(t => t.id), 0) + 1
-  trains.value.push({
-    id,
-    code: newTrain.value.code,
-    name: newTrain.value.name,
-    type: newTrain.value.type,
-    capacity: parseInt(newTrain.value.capacity),
-    status: newTrain.value.status,
-    schedules: []
-  })
-  showNewTrainForm.value = false
-  newTrain.value = { code: '', name: '', type: '', capacity: '', status: 'active' }
+  if (!newTrain.value.name.trim()) {
+    trainMessage.value = { type: 'error', text: 'Nama Kereta tidak boleh kosong' }
+    return
+  }
+  if (!newTrain.value.type.trim()) {
+    trainMessage.value = { type: 'error', text: 'Tipe Kereta tidak boleh kosong' }
+    return
+  }
+  if (!newTrain.value.capacity || parseInt(newTrain.value.capacity) <= 0) {
+    trainMessage.value = { type: 'error', text: 'Kapasitas harus lebih dari 0' }
+    return
+  }
+  
+  // Check duplicate code
+  if (trains.value.some(t => t.code === newTrain.value.code)) {
+    trainMessage.value = { type: 'error', text: 'Kode Kereta sudah ada' }
+    return
+  }
+
+  isLoadingTrain.value = true
+  trainMessage.value = { type: '', text: '' }
+  
+  try {
+    const id = Math.max(...trains.value.map(t => t.id), 0) + 1
+    trains.value.push({
+      id,
+      code: newTrain.value.code.trim(),
+      name: newTrain.value.name.trim(),
+      type: newTrain.value.type.trim(),
+      capacity: parseInt(newTrain.value.capacity),
+      status: newTrain.value.status,
+      schedules: [],
+      createdAt: new Date().toISOString()
+    })
+    
+    trainMessage.value = { type: 'success', text: 'Kereta berhasil ditambahkan' }
+    showNewTrainForm.value = false
+    newTrain.value = { code: '', name: '', type: '', capacity: '', status: 'active' }
+    
+    // Clear message after 3 seconds
+    setTimeout(() => {
+      trainMessage.value = { type: '', text: '' }
+    }, 3000)
+  } catch (error) {
+    trainMessage.value = { type: 'error', text: 'Gagal menambahkan kereta' }
+  } finally {
+    isLoadingTrain.value = false
+  }
 }
 
 const handleDeleteTrain = (id) => {
+  if (!confirm('Yakin ingin menghapus kereta ini?')) return
   const index = trains.value.findIndex(t => t.id === id)
   if (index !== -1) {
     trains.value.splice(index, 1)
+    trainMessage.value = { type: 'success', text: 'Kereta berhasil dihapus' }
+    setTimeout(() => {
+      trainMessage.value = { type: '', text: '' }
+    }, 3000)
   }
 }
 
@@ -295,7 +423,7 @@ const initCharts = () => {
         labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Ags', 'Sep', 'Okt', 'Nov', 'Des'],
         datasets: [{
           label: 'Revenue (Juta Rp)',
-          data: [12, 19, 15, 25, 22, 30, 28, 35, 32, 38, 42, 45],
+          data: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
           borderColor: '#1675E7',
           backgroundColor: 'rgba(22, 117, 231, 0.1)',
           borderWidth: 3,
@@ -344,7 +472,7 @@ const initCharts = () => {
         labels: ['KRL', 'LRT', 'Kereta Jarak Jauh', 'Bandara', 'Lokal'],
         datasets: [{
           label: 'Tiket Terjual',
-          data: [450, 320, 280, 200, 380],
+          data: [0, 0, 0, 0, 0],
           backgroundColor: [
             '#1675E7',
             '#09D8E3',
@@ -392,7 +520,7 @@ const initCharts = () => {
       data: {
         labels: ['Regular', 'Silver Member', 'Gold Member', 'Platinum Member'],
         datasets: [{
-          data: [450, 280, 180, 88],
+          data: [0, 0, 0, 0],
           backgroundColor: [
             '#E5E7EB',
             '#FFD700',
@@ -574,9 +702,9 @@ onMounted(() => {
           </form>
 
           <div class="info-box">
-            <p><strong>Demo Admin:</strong></p>
-            <p>Email: admin@swiftrail.com</p>
-            <p>Password: admin123</p>
+            <p><strong>Admin Credentials:</strong></p>
+            <p>Email: admin@swiftrail.my.id</p>
+            <p>Password: SwiftRailGACOR</p>
           </div>
         </div>
       </div>
@@ -687,8 +815,8 @@ onMounted(() => {
                   <path d="M6 20c0-3.3 2.69-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
               </div>
-              <p class="card-value">1,248</p>
-              <p class="card-subtitle">+15 bulan ini</p>
+              <p class="card-value">0</p>
+              <p class="card-subtitle">+0 bulan ini</p>
             </div>
 
             <div class="dashboard-card">
@@ -699,8 +827,8 @@ onMounted(() => {
                   <path d="M2 10H22" stroke="currentColor" stroke-width="2"/>
                 </svg>
               </div>
-              <p class="card-value">8,542</p>
-              <p class="card-subtitle">+342 hari ini</p>
+              <p class="card-value">0</p>
+              <p class="card-subtitle">+0 hari ini</p>
             </div>
 
             <div class="dashboard-card">
@@ -710,8 +838,8 @@ onMounted(() => {
                   <path d="M12 1V23M17 4H9C7.89543 4 7 4.89543 7 6V18C7 19.1046 7.89543 20 9 20H15C16.1046 20 17 19.1046 17 18V6C17 4.89543 16.1046 4 15 4Z" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
               </div>
-              <p class="card-value">Rp 45,2M</p>
-              <p class="card-subtitle">+8% bulan lalu</p>
+              <p class="card-value">Rp 0</p>
+              <p class="card-subtitle">+0% bulan lalu</p>
             </div>
           </div>
 
@@ -810,16 +938,16 @@ onMounted(() => {
 
           <div class="master-tabs">
             <button 
-              v-for="type in ['trains']"
+              v-for="type in ['trains', 'routes']"
               :key="type"
               :class="['tab-btn', { active: masterDataType === type }]"
               @click="masterDataType = type"
             >
-              {{ type === 'trains' ? 'Manajemen Kereta & Jadwal' : type }}
+              {{ type === 'trains' ? 'Kereta' : 'Rute' }}
             </button>
           </div>
 
-          <!-- Trains Management (Unified with Schedules) -->
+          <!-- Trains Management -->
           <div v-if="masterDataType === 'trains'" class="master-data-content">
             <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
               <button class="btn-primary" @click="showNewTrainForm = !showNewTrainForm">
@@ -829,23 +957,63 @@ onMounted(() => {
 
             <!-- Add New Train Form -->
             <div v-if="showNewTrainForm" class="form-card">
-              <h3>Form Kereta Baru</h3>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3>Form Kereta Baru</h3>
+                <button class="close-btn" @click="showNewTrainForm = false">×</button>
+              </div>
+
+              <!-- Message Alert -->
+              <div v-if="trainMessage.text" :class="['message-alert', trainMessage.type]" style="margin-bottom: 1rem;">
+                {{ trainMessage.text }}
+              </div>
+
               <div class="form-grid">
                 <div class="form-group">
-                  <label>Kode Kereta</label>
-                  <input v-model="newTrain.code" type="text" placeholder="Contoh: KRL-001" class="form-input" />
+                  <label>Kode Kereta <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newTrain.code" 
+                    type="text" 
+                    placeholder="Contoh: EXP-001" 
+                    class="form-input"
+                    @input="trainMessage.type = ''"
+                    maxlength="20"
+                  />
+                  <small style="color: #6b7280;">Format: EXP-001, KRL-002</small>
                 </div>
                 <div class="form-group">
-                  <label>Nama Kereta</label>
-                  <input v-model="newTrain.name" type="text" placeholder="KRL Jarak Jauh Express" class="form-input" />
+                  <label>Nama Kereta <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newTrain.name" 
+                    type="text" 
+                    placeholder="Argo Bromo Anggrek" 
+                    class="form-input"
+                    @input="trainMessage.type = ''"
+                    maxlength="50"
+                  />
                 </div>
                 <div class="form-group">
-                  <label>Tipe</label>
-                  <input v-model="newTrain.type" type="text" placeholder="Contoh: KRL" class="form-input" />
+                  <label>Tipe Kereta <span style="color: #dc2626;">*</span></label>
+                  <select v-model="newTrain.type" class="form-input" @change="trainMessage.type = ''">
+                    <option value="">-- Pilih Tipe --</option>
+                    <option value="Executive">Executive</option>
+                    <option value="Business">Business</option>
+                    <option value="Economy">Economy</option>
+                    <option value="KRL">KRL</option>
+                    <option value="LRT">LRT</option>
+                  </select>
                 </div>
                 <div class="form-group">
-                  <label>Kapasitas</label>
-                  <input v-model="newTrain.capacity" type="number" placeholder="500" class="form-input" />
+                  <label>Kapasitas <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newTrain.capacity" 
+                    type="number" 
+                    placeholder="500" 
+                    class="form-input"
+                    @input="trainMessage.type = ''"
+                    min="1"
+                    max="9999"
+                  />
+                  <small style="color: #6b7280;">Penumpang maksimal</small>
                 </div>
                 <div class="form-group">
                   <label>Status</label>
@@ -857,8 +1025,21 @@ onMounted(() => {
                 </div>
               </div>
               <div class="form-actions">
-                <button class="btn-success" @click="handleAddTrain">Simpan</button>
-                <button class="btn-cancel" @click="showNewTrainForm = false">Batal</button>
+                <button 
+                  class="btn-success" 
+                  @click="handleAddTrain"
+                  :disabled="isLoadingTrain"
+                >
+                  <span v-if="!isLoadingTrain">Simpan</span>
+                  <span v-else>Menyimpan...</span>
+                </button>
+                <button 
+                  class="btn-cancel" 
+                  @click="showNewTrainForm = false"
+                  :disabled="isLoadingTrain"
+                >
+                  Batal
+                </button>
               </div>
             </div>
 
@@ -957,6 +1138,157 @@ onMounted(() => {
                       Belum ada jadwal untuk kereta ini.
                     </div>
                   </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Routes Management -->
+          <div v-if="masterDataType === 'routes'" class="master-data-content">
+            <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+              <button class="btn-primary" @click="showNewRouteForm = !showNewRouteForm">
+                + Tambah Rute Baru
+              </button>
+            </div>
+
+            <!-- Add New Route Form -->
+            <div v-if="showNewRouteForm" class="form-card">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                <h3>Form Rute Baru</h3>
+                <button class="close-btn" @click="showNewRouteForm = false">×</button>
+              </div>
+
+              <!-- Message Alert -->
+              <div v-if="routeMessage.text" :class="['message-alert', routeMessage.type]" style="margin-bottom: 1rem;">
+                {{ routeMessage.text }}
+              </div>
+
+              <div class="form-grid">
+                <div class="form-group">
+                  <label>Kode Rute <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newRoute.code" 
+                    type="text" 
+                    placeholder="Contoh: RT-001" 
+                    class="form-input"
+                    @input="routeMessage.type = ''"
+                    maxlength="20"
+                  />
+                  <small style="color: #6b7280;">Format unik untuk identifikasi rute</small>
+                </div>
+                <div class="form-group">
+                  <label>Stasiun Awal <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newRoute.origin" 
+                    type="text" 
+                    placeholder="Jakarta Kota" 
+                    class="form-input"
+                    @input="routeMessage.type = ''"
+                    maxlength="50"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Stasiun Tujuan <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newRoute.destination" 
+                    type="text" 
+                    placeholder="Surabaya Gubeng" 
+                    class="form-input"
+                    @input="routeMessage.type = ''"
+                    maxlength="50"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Jam Keberangkatan <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newRoute.departureTime" 
+                    type="time" 
+                    class="form-input"
+                    @input="routeMessage.type = ''"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Durasi Perjalanan (jam) <span style="color: #dc2626;">*</span></label>
+                  <input 
+                    v-model="newRoute.estimatedDuration" 
+                    type="number" 
+                    placeholder="12" 
+                    class="form-input"
+                    @input="routeMessage.type = ''"
+                    min="1"
+                    max="999"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Jarak (km)</label>
+                  <input 
+                    v-model="newRoute.distance" 
+                    type="text" 
+                    placeholder="720" 
+                    class="form-input"
+                    maxlength="20"
+                  />
+                </div>
+                <div class="form-group">
+                  <label>Stasiun Antara (pisahkan dengan koma)</label>
+                  <input 
+                    v-model="newRoute.stops" 
+                    type="text" 
+                    placeholder="Cirebon, Pekalongan, Semarang" 
+                    class="form-input"
+                  />
+                  <small style="color: #6b7280;">Opsional: Daftar stasiun yang dilalui</small>
+                </div>
+                <div class="form-group">
+                  <label>Status</label>
+                  <select v-model="newRoute.status" class="form-input">
+                    <option value="active">Aktif</option>
+                    <option value="inactive">Nonaktif</option>
+                  </select>
+                </div>
+              </div>
+              <div class="form-actions">
+                <button 
+                  class="btn-success" 
+                  @click="handleAddRoute"
+                  :disabled="isLoadingRoute"
+                >
+                  <span v-if="!isLoadingRoute">Simpan</span>
+                  <span v-else>Menyimpan...</span>
+                </button>
+                <button 
+                  class="btn-cancel" 
+                  @click="showNewRouteForm = false"
+                  :disabled="isLoadingRoute"
+                >
+                  Batal
+                </button>
+              </div>
+            </div>
+
+            <!-- Routes List -->
+            <div class="routes-list">
+              <div v-if="routes.length === 0" class="empty-state">
+                <p>Belum ada rute. Tambahkan rute baru untuk memulai.</p>
+              </div>
+
+              <div v-for="route in routes" :key="route.id" class="route-card">
+                <div class="route-header">
+                  <div class="route-info">
+                    <h4>{{ route.code }} - {{ route.origin }} → {{ route.destination }}</h4>
+                    <p class="route-meta">
+                      <span>Jam: {{ route.departureTime }}</span>
+                      <span>Durasi: {{ route.estimatedDuration }} jam</span>
+                      <span v-if="route.distance">Jarak: {{ route.distance }} km</span>
+                      <span :class="['status', route.status]">{{ route.status === 'active' ? 'Aktif' : 'Nonaktif' }}</span>
+                    </p>
+                  </div>
+                  <button class="btn-delete" @click="handleDeleteRoute(route.id)">Hapus</button>
+                </div>
+                <div v-if="route.stops && route.stops.length > 0" class="route-stops">
+                  <p style="margin: 0.5rem 0; color: #6b7280; font-size: 0.875rem;">
+                    <strong>Stasiun Antara:</strong> {{ route.stops.join(' → ') }}
+                  </p>
                 </div>
               </div>
             </div>
@@ -2023,6 +2355,72 @@ onMounted(() => {
   height: auto;
 }
 
+/* ===== ROUTE CARD STYLES ===== */
+.routes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1.5rem;
+}
+
+.route-card {
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  transition: all 0.2s ease;
+}
+
+.route-card:hover {
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.route-header {
+  padding: 1rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: white;
+  border-bottom: 1px solid #f3f4f6;
+}
+
+.route-info {
+  flex: 1;
+}
+
+.route-info h4 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text-dark);
+  margin-bottom: 0.5rem;
+}
+
+.route-meta {
+  display: flex;
+  gap: 1.5rem;
+  font-size: 0.875rem;
+  color: var(--color-text-light);
+  flex-wrap: wrap;
+  margin: 0;
+}
+
+.route-meta span {
+  display: flex;
+  align-items: center;
+}
+
+.route-stops {
+  padding: 0.75rem 1.5rem;
+  background: var(--color-bg-light);
+  border-top: 1px solid #e5e7eb;
+}
+
+.route-stops p {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
 /* ===== FOOTER STYLES ===== */
 .admin-footer {
   background: var(--color-text-dark);
@@ -2210,6 +2608,63 @@ onMounted(() => {
   .card-value {
     font-size: 1.5rem;
   }
+}
+
+/* ===== MESSAGE ALERT STYLES ===== */
+.message-alert {
+  padding: 1rem;
+  border-radius: 8px;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  border: 1px solid;
+  animation: slideDown 0.3s ease-out;
+}
+
+.message-alert.success {
+  background-color: #d1fae5;
+  color: #065f46;
+  border-color: #a7f3d0;
+}
+
+.message-alert.error {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ===== CLOSE BUTTON STYLES ===== */
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--color-text-light);
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.2s ease;
+  width: 24px;
+  height: 24px;
+}
+
+.close-btn:hover {
+  color: #f97316;
+}
+
+.form-card .close-btn:hover {
+  color: var(--color-primary);
 }
 
 </style>

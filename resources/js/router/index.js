@@ -11,9 +11,9 @@ import PaymentMethods from '../components/PaymentMethods.vue'
 import Checkout from '../components/Checkout.vue'
 import PaymentSuccess from '../components/PaymentSuccess.vue'
 import Refund from '../components/Refund.vue';
-import ETicket from '../components/ETicket.vue'
-import MyTicket from '../components/MyTicket.vue'
+import Ticket from '../components/Ticket.vue'
 import Tracking from '../components/Tracking.vue'
+import SwiftPay from '../components/SwiftPay.vue'
 
 const routes = [
   {
@@ -95,20 +95,20 @@ const routes = [
     component: Refund
   },
   {
-    path: '/eticket',
-    name: 'ETicket',
-    component: ETicket
-  },
-  {
-    path: '/my-ticket',
-    name: 'MyTicket',
-    component: MyTicket,
-    meta: { requiresAuth: true }
+    path: '/ticket',
+    name: 'Ticket',
+    component: Ticket,
+    meta: { requiresAuth: false }
   },
   {
     path: '/tracking',
     name: 'Tracking',
     component: Tracking
+  },
+  {
+    path: '/swiftpay',
+    name: 'SwiftPay',
+    component: SwiftPay
   }
 ]
 

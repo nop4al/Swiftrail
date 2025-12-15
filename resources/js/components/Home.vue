@@ -162,58 +162,6 @@ const searchTrains = async () => {
 
 <template>
   <div class="homepage">
-    <!-- Header -->
-    <header class="header">
-      <div class="header-container">
-        <div class="logo">
-          <div class="logo-icon">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect width="24" height="24" rx="6" fill="#1675E7"/>
-              <path d="M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V14C18 15.1046 17.1046 16 16 16H8C6.89543 16 6 15.1046 6 14V8Z" fill="white"/>
-              <rect x="8" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-              <rect x="13" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-              <circle cx="9" cy="18" r="1.5" fill="white"/>
-              <circle cx="15" cy="18" r="1.5" fill="white"/>
-            </svg>
-          </div>
-          <div class="logo-text">
-            <span class="logo-title">SwiftRail</span>
-            <span class="logo-subtitle">SUPER APP</span>
-          </div>
-        </div>
-        
-        <nav class="nav">
-          <router-link to="/" class="nav-link active">Home</router-link>
-          <a href="#" class="nav-link">Tickets</a>
-          
-          <!-- If not logged in -->
-          <template v-if="!userToken">
-            <router-link to="/login" class="nav-link">Masuk</router-link>
-            <router-link to="/register" class="nav-btn">Daftar</router-link>
-          </template>
-          
-          <!-- If logged in -->
-          <div v-else class="user-menu-wrapper">
-            <button @click="showUserMenu = !showUserMenu" class="user-menu-btn">
-              <div class="user-avatar">
-                {{ userData?.first_name?.charAt(0) }}{{ userData?.last_name?.charAt(0) }}
-              </div>
-              <span class="user-name">{{ userData?.first_name }} {{ userData?.last_name }}</span>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M6 9L12 15L18 9" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-              </svg>
-            </button>
-            
-            <!-- Dropdown menu -->
-            <div v-if="showUserMenu" class="dropdown-menu">
-              <router-link to="/profile" class="dropdown-item">Profil Saya</router-link>
-              <button @click="handleLogout" class="dropdown-item logout">Keluar</button>
-            </div>
-          </div>
-        </nav>
-      </div>
-    </header>
-
     <!-- Hero Section -->
     <section class="hero">
       <div class="hero-bg">
@@ -516,60 +464,6 @@ const searchTrains = async () => {
       </div>
     </section>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="footer-container">
-        <div class="footer-brand">
-          <div class="logo">
-            <div class="logo-icon">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <rect width="24" height="24" rx="6" fill="#1675E7"/>
-                <path d="M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V14C18 15.1046 17.1046 16 16 16H8C6.89543 16 6 15.1046 6 14V8Z" fill="white"/>
-                <rect x="8" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-                <rect x="13" y="8" width="3" height="2" rx="0.5" fill="#1675E7"/>
-                <circle cx="9" cy="18" r="1.5" fill="white"/>
-                <circle cx="15" cy="18" r="1.5" fill="white"/>
-              </svg>
-            </div>
-            <div class="logo-text">
-              <span class="logo-title">SwiftRail</span>
-              <span class="logo-subtitle">SUPER APP</span>
-            </div>
-          </div>
-          <p class="footer-desc">Solusi transportasi kereta api terlengkap di Indonesia.</p>
-        </div>
-        
-        <div class="footer-links">
-          <div class="footer-col">
-            <h4>Layanan</h4>
-            <a href="#">Antar Kota</a>
-            <a href="#">Lokal</a>
-            <a href="#">KRL</a>
-            <a href="#">LRT/MRT</a>
-            <a href="#">Bandara</a>
-          </div>
-          <div class="footer-col">
-            <h4>Perusahaan</h4>
-            <a href="#">Tentang Kami</a>
-            <a href="#">Karir</a>
-            <a href="#">Blog</a>
-            <a href="#">Kontak</a>
-          </div>
-          <div class="footer-col">
-            <h4>Bantuan</h4>
-            <a href="#">FAQ</a>
-            <a href="#">Syarat & Ketentuan</a>
-            <a href="#">Kebijakan Privasi</a>
-            <a href="#">Pusat Bantuan</a>
-          </div>
-        </div>
-      </div>
-      
-      <div class="footer-bottom">
-        <p>&copy; 2025 SwiftRail. All rights reserved.</p>
-      </div>
-    </footer>
-
     <!-- Promo Modal -->
     <div v-if="showPromoModal" class="modal-overlay" @click="closePromoModal">
       <div class="modal-content" @click.stop>
@@ -741,176 +635,10 @@ const searchTrains = async () => {
   background: var(--color-bg-light);
 }
 
-/* Header */
-.header {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  background: var(--color-white);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-  z-index: 100;
-}
-
-.header-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0.875rem 1.5rem;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-.logo {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-
-.logo-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.logo-text {
-  display: flex;
-  flex-direction: column;
-}
-
-.logo-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--color-text-dark);
-  line-height: 1.2;
-}
-
-.logo-subtitle {
-  font-size: 0.625rem;
-  font-weight: 600;
-  color: var(--color-text-light);
-  letter-spacing: 0.1em;
-}
-
-.nav {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.nav-link {
-  font-size: 0.9375rem;
-  font-weight: 500;
-  color: var(--color-text-dark);
-  padding: 0.5rem 1rem;
-}
-
-.nav-link:hover {
-  color: var(--color-primary);
-}
-
-.nav-btn {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--color-white);
-  background: var(--color-primary);
-  padding: 0.625rem 1.5rem;
-  border-radius: 8px;
-}
-
-.nav-btn:hover {
-  background: var(--color-primary-dark);
-  transform: translateY(-1px);
-}
-
-/* User Menu */
-.user-menu-wrapper {
-  position: relative;
-}
-
-.user-menu-btn {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 1rem;
-  background: #F3F4F6;
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.user-menu-btn:hover {
-  background: #E5E7EB;
-  border-color: #D1D5DB;
-}
-
-.user-avatar {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  background: var(--color-primary);
-  color: white;
-  border-radius: 50%;
-  font-weight: 600;
-  font-size: 0.875rem;
-}
-
-.user-name {
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--color-text-dark);
-  max-width: 100px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.dropdown-menu {
-  position: absolute;
-  top: 100%;
-  right: 0;
-  margin-top: 0.5rem;
-  background: white;
-  border: 1px solid #E5E7EB;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-  min-width: 180px;
-  z-index: 1000;
-}
-
-.dropdown-item {
-  display: block;
-  width: 100%;
-  padding: 0.75rem 1rem;
-  text-align: left;
-  color: var(--color-text-dark);
-  font-size: 0.875rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  transition: background-color 0.2s ease;
-}
-
-.dropdown-item:hover {
-  background-color: #F3F4F6;
-}
-
-.dropdown-item.logout {
-  color: #EF4444;
-  border-top: 1px solid #E5E7EB;
-}
-
-.dropdown-item.logout:hover {
-  background-color: #FEE2E2;
-}
-
 /* Hero */
 .hero {
   position: relative;
-  padding-top: 64px;
+  padding-top: 0;
   min-height: 600px;
   display: flex;
   flex-direction: column;
@@ -919,7 +647,7 @@ const searchTrains = async () => {
 
 .hero-bg {
   position: absolute;
-  top: 64px;
+  top: 0;
   left: 0;
   right: 0;
   height: 420px;
@@ -945,7 +673,7 @@ const searchTrains = async () => {
   position: relative;
   z-index: 1;
   text-align: center;
-  padding: 4rem 1.5rem 2rem;
+  padding: 3rem 1.5rem 2rem;
   max-width: 700px;
 }
 
@@ -1187,75 +915,6 @@ const searchTrains = async () => {
   font-size: 0.9375rem;
   color: var(--color-text-light);
   line-height: 1.6;
-}
-
-/* Footer */
-.footer {
-  background: var(--color-text-dark);
-  color: var(--color-white);
-  padding-top: 4rem;
-}
-
-.footer-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 1.5rem;
-  display: grid;
-  grid-template-columns: 1.5fr 2fr;
-  gap: 4rem;
-}
-
-.footer-brand .logo-title {
-  color: var(--color-white);
-}
-
-.footer-brand .logo-subtitle {
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.footer-desc {
-  margin-top: 1rem;
-  font-size: 0.9375rem;
-  color: rgba(255, 255, 255, 0.7);
-  line-height: 1.6;
-}
-
-.footer-links {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 2rem;
-}
-
-.footer-col h4 {
-  font-size: 0.875rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 1.25rem;
-  color: var(--color-white);
-}
-
-.footer-col a {
-  display: block;
-  font-size: 0.9375rem;
-  color: rgba(255, 255, 255, 0.7);
-  margin-bottom: 0.75rem;
-}
-
-.footer-col a:hover {
-  color: var(--color-accent);
-}
-
-.footer-bottom {
-  margin-top: 3rem;
-  padding: 1.5rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.1);
-  text-align: center;
-}
-
-.footer-bottom p {
-  font-size: 0.875rem;
-  color: rgba(255, 255, 255, 0.5);
 }
 
 /* Promo Section */
