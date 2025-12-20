@@ -370,7 +370,7 @@ class BookingController extends Controller
 
     /**
      * Helper: Match station names flexibly
-     * Matches if one string contains the other, or if key words overlap
+     * Matches if one string contains the other, or if key words overlap (minimum 1 word)
      */
     private function stationNameMatch($dbName, $searchName)
     {
@@ -387,8 +387,8 @@ class BookingController extends Controller
             return false;
         }
         
-        // If at least 2 or more words match, consider it a match
+        // If at least 1 or more words match, consider it a match
         $matches = count(array_intersect($dbWords, $searchWords));
-        return $matches >= 2;
+        return $matches >= 1;
     }
 }
