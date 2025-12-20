@@ -9,11 +9,11 @@ class CreateStationsSeeder extends Seeder
 {
     public function run(): void
     {
-        Station::firstOrCreate(['code' => 'JKT'], ['name' => 'Stasiun Pusat Jakarta', 'city' => 'Jakarta', 'active' => true]);
-        Station::firstOrCreate(['code' => 'GMB'], ['name' => 'Stasiun Gambir', 'city' => 'Jakarta', 'active' => true]);
-        Station::firstOrCreate(['code' => 'BDG'], ['name' => 'Stasiun Bandung', 'city' => 'Bandung', 'active' => true]);
-        Station::firstOrCreate(['code' => 'SBY'], ['name' => 'Stasiun Tawang Alun Surabaya', 'city' => 'Surabaya', 'active' => true]);
-        Station::firstOrCreate(['code' => 'SBY-P'], ['name' => 'Stasiun Pasar Turi Surabaya', 'city' => 'Surabaya', 'active' => true]);
-        Station::firstOrCreate(['code' => 'MLG'], ['name' => 'Stasiun Malang', 'city' => 'Malang', 'active' => true]);
+        Station::firstOrCreate(['code' => 'JKT'], ['name' => 'Jakarta Pusat', 'city' => 'Jakarta', 'active' => true]);
+        Station::firstOrCreate(['code' => 'GMB'], ['name' => 'Gambir', 'city' => 'Jakarta', 'active' => true]);
+        Station::firstOrCreate(['code' => 'BDG'], ['name' => 'Bandung', 'city' => 'Bandung', 'active' => true]);
+        Station::firstOrCreate(['code' => 'SBY'], ['name' => 'Surabaya Tawang', 'city' => 'Surabaya', 'active' => true]);
+        Station::firstOrCreate(['code' => 'SBY-P'], ['name' => 'Surabaya Pasar Turi', 'city' => 'Surabaya', 'active' => true]);
+        Station::firstOrCreate(['code' => 'MLG'], ['name' => 'Malang', 'city' => 'Malang', 'active' => true]);
     }
 }

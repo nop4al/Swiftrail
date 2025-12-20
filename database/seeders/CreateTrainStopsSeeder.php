@@ -25,12 +25,12 @@ class CreateTrainStopsSeeder extends Seeder
         $train1 = $trains->firstWhere('code', 'AB-5001');
         if ($train1) {
             $stationSequence = [
-                ['name' => 'Stasiun Gambir', 'arrival' => null, 'departure' => '14:30'],
+                ['name' => 'Gambir', 'arrival' => null, 'departure' => '14:30'],
                 ['name' => 'Cirebon', 'arrival' => '16:45', 'departure' => '17:00'],
                 ['name' => 'Pekalongan', 'arrival' => '17:45', 'departure' => '18:00'],
                 ['name' => 'Semarang Tawang', 'arrival' => '18:45', 'departure' => '19:00'],
                 ['name' => 'Bojonegoro', 'arrival' => '20:30', 'departure' => '20:45'],
-                ['name' => 'Stasiun Pasar Turi Surabaya', 'arrival' => '22:00', 'departure' => null],
+                ['name' => 'Surabaya Pasar Turi', 'arrival' => '22:00', 'departure' => null],
             ];
 
             foreach ($stationSequence as $seq => $stationData) {
@@ -51,11 +51,11 @@ class CreateTrainStopsSeeder extends Seeder
         $train2 = $trains->firstWhere('code', 'EX-3002');
         if ($train2) {
             $stationSequence = [
-                ['name' => 'Stasiun Gambir', 'arrival' => null, 'departure' => '06:00'],
+                ['name' => 'Gambir', 'arrival' => null, 'departure' => '06:00'],
                 ['name' => 'Pekalongan', 'arrival' => '08:00', 'departure' => '08:15'],
                 ['name' => 'Semarang Tawang', 'arrival' => '09:15', 'departure' => '09:30'],
                 ['name' => 'Bojonegoro', 'arrival' => '11:00', 'departure' => '11:15'],
-                ['name' => 'Stasiun Pasar Turi Surabaya', 'arrival' => '12:30', 'departure' => null],
+                ['name' => 'Surabaya Pasar Turi', 'arrival' => '12:30', 'departure' => null],
             ];
 
             foreach ($stationSequence as $seq => $stationData) {
@@ -76,12 +76,12 @@ class CreateTrainStopsSeeder extends Seeder
         $train3 = $trains->firstWhere('code', 'GA-2003');
         if ($train3) {
             $stationSequence = [
-                ['name' => 'Stasiun Gambir', 'arrival' => null, 'departure' => '15:30'],
+                ['name' => 'Gambir', 'arrival' => null, 'departure' => '15:30'],
                 ['name' => 'Cirebon', 'arrival' => '17:30', 'departure' => '17:45'],
                 ['name' => 'Pekalongan', 'arrival' => '18:30', 'departure' => '18:45'],
                 ['name' => 'Semarang Tawang', 'arrival' => '19:30', 'departure' => '19:45'],
                 ['name' => 'Bojonegoro', 'arrival' => '21:15', 'departure' => '21:30'],
-                ['name' => 'Stasiun Pasar Turi Surabaya', 'arrival' => '23:00', 'departure' => null],
+                ['name' => 'Surabaya Pasar Turi', 'arrival' => '23:00', 'departure' => null],
             ];
 
             foreach ($stationSequence as $seq => $stationData) {
