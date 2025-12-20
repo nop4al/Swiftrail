@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Destinations API</title>
+    <style>
+        body { font-family: Arial; margin: 20px; }
+        .button { padding: 10px 20px; margin: 10px 0; background: #1675E7; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        .button:hover { background: #0c5bb5; }
+        pre { background: #f0f0f0; padding: 10px; overflow-x: auto; border-radius: 4px; }
+        .success { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Test Destinations API</h1>
+    
+    <div>
+        <h2>Test 1: Get Destinations by Station (KA1)</h2>
+        <button class="button" onclick="testDestinations()">Test API Endpoint</button>
+        <div id="result1"></div>
+    </div>
+
+    <div>
+        <h2>Test 2: Get Tracking Data (KA1)</h2>
+        <button class="button" onclick="testTracking()">Test Tracking Endpoint</button>
+        <div id="result2"></div>
+    </div>
+
+    <script>
+        async function testDestinations() {
+            const resultDiv = document.getElementById('result1');
+            resultDiv.innerHTML = '⏳ Loading...';
+            
+            try {
+                console.log('Testing: /api/v1/trains/KA1/destinations/by-station');
+                const response = await fetch('/api/v1/trains/KA1/destinations/by-station');
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Response data:', data);
+                
+                if (data.data && data.data.stations_with_destinations) {
+                    const count = data.data.stations_with_destinations.length;
+                    let html = `<p class="success">✅ API Working! Found ${count} stations with destinations</p>`;
+                    
+                    data.data.stations_with_destinations.forEach((station, i) => {
+                        html += `<div style="margin: 10px 0; padding: 10px; background: #f9f9f9; border-left: 3px solid #1675E7;">
+                            <b>${i+1}. ${station.station.name}</b>
+                            <br/>Tourism items: ${station.tourism.length}
+                            ${station.tourism.slice(0, 2).map(t => `<br/>  • ${t.name} (${t.rating}⭐)`).join('')}
+                        </div>`;
+                    });
+                    
+                    resultDiv.innerHTML = html;
+                } else {
+                    resultDiv.innerHTML = '<p class="error">❌ Unexpected response structure</p><pre>' + JSON.stringify(data, null, 2) + '</pre>';
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                resultDiv.innerHTML = '<p class="error">❌ Error: ' + err.message + '</p>';
+            }
+        }
+        
+        async function testTracking() {
+            const resultDiv = document.getElementById('result2');
+            resultDiv.innerHTML = '⏳ Loading...';
+            
+            try {
+                console.log('Testing: /api/v1/tracking/KA1');
+                const response = await fetch('/api/v1/tracking/KA1');
+                console.log('Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                console.log('Tracking data:', data);
+                
+                if (data.train) {
+                    resultDiv.innerHTML = `<p class="success">✅ Tracking API Working!</p>
+                        <p>Train: ${data.train.name} (${data.train.code})</p>
+                        <p>Status: ${data.status}</p>
+                        <p>Position: ${data.lat.toFixed(4)}, ${data.lng.toFixed(4)}</p>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>`;
+                } else {
+                    resultDiv.innerHTML = '<p class="error">❌ Unexpected response structure</p>';
+                }
+            } catch (err) {
+                console.error('Error:', err);
+                resultDiv.innerHTML = '<p class="error">❌ Error: ' + err.message + '</p>';
+            }
+        }
+        
+        // Test on load
+        window.onload = () => {
+            console.log('Test page loaded. APIs available at:');
+            console.log('  - /api/v1/trains/KA1/destinations/by-station');
+            console.log('  - /api/v1/tracking/KA1');
+        };
+    </script>
+</body>
+</html>
