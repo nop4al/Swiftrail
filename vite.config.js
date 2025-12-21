@@ -17,6 +17,13 @@ export default defineConfig({
     },
   },
   server: {
-    host: '0.0.0.0',
+    host: '0.0.0.0', // Listen di semua IP
+    port: 5173,
+    // HMR auto-detect dari client - jadi bisa diakses dari mana saja
+    hmr: {
+      protocol: 'http',
+      host: process.env.VITE_HMR_HOST, // Will be set by client if undefined
+      port: process.env.VITE_HMR_PORT || 5173,
+    }
   },
 })
