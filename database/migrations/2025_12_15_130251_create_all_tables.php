@@ -96,8 +96,8 @@ return new class extends Migration
             $table->foreignId('route_id')->constrained('routes')->onDelete('cascade');
             $table->time('departure_time');
             $table->time('arrival_time');
-            $table->string('days');
-            $table->enum('status', ['active', 'inactive'])->default('active');
+            $table->string('days')->default(''); // e.g., 'MON,WED,FRI' or empty for every day
+            $table->enum('status', ['active', 'inactive', 'sold-out'])->default('active');
             $table->timestamps();
         });
 
