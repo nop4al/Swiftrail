@@ -18,7 +18,8 @@ use App\Http\Controllers\Api\{
     PaymentController,
     TrackingLiveController,
     TrainTrackingController,
-    SwiftPayController
+    SwiftPayController,
+    ProfilePhotoController
 };
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\MidtransController;
@@ -41,6 +42,9 @@ Route::prefix('v1')->middleware('api')->group(function () {
 
     // ========== Authenticated Endpoints ==========
     Route::middleware('auth:sanctum')->group(function () {
+                // Profile photo upload/delete
+                Route::post('/profile/photo', [ProfilePhotoController::class, 'uploadPhoto']);
+                Route::delete('/profile/photo', [ProfilePhotoController::class, 'deletePhoto']);
         // Bookings/Tickets
         Route::prefix('bookings')->group(function () {
             Route::get('/', [BookingController::class, 'index']);
@@ -157,6 +161,8 @@ Route::prefix('v1')->middleware('api')->group(function () {
         Route::get('/finish', [MidtransController::class, 'finish']);
         Route::get('/error', [MidtransController::class, 'error']);
         Route::get('/pending', [MidtransController::class, 'pending']);
+        // Public: get payment details by order id (used by frontend after redirect)
+        Route::get('/payment/{orderId}', [MidtransController::class, 'getPayment']);
     });
 });
 

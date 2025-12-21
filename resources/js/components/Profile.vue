@@ -1,6 +1,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import ProfilePhotoUpload from './ProfilePhotoUpload.vue'
 
 const router = useRouter()
 
@@ -69,6 +70,14 @@ const errors = reactive({
   newPassword: '',
   confirmPassword: '',
 })
+
+// Photo upload modal state
+const showPhotoUploadModal = ref(false)
+const photoUploadLoading = ref(false)
+const photoUploadError = ref('')
+const selectedPhotoFile = ref(null)
+const photoPreviewUrl = ref(null)
+const photoFileInput = ref(null)
 
 // Loyalty data
 const userLoyalty = ref({})
@@ -146,7 +155,8 @@ const fetchUserProfile = async () => {
         phone: data.data.phone || '',
         identityNumber: data.data.identityNumber || '',
         address: data.data.address || '',
-        city: data.data.city || ''
+        city: data.data.city || '',
+        avatar: data.data.avatar || null
       }
       
       // Update form data
@@ -171,6 +181,130 @@ onMounted(() => {
   fetchUserProfile()
   fetchUserLoyalty()
 })
+
+// Handle photo update from ProfilePhotoUpload component
+const handlePhotoUpdated = (photoData) => {
+  // Update userProfile dengan avatar baru
+  if (photoData.avatar) {
+    userProfile.value.avatar = photoData.avatar
+  } else {
+    userProfile.value.avatar = null
+  }
+}
+
+// Photo upload modal functions
+const openPhotoUploadModal = () => {
+  showPhotoUploadModal.value = true
+  photoUploadError.value = ''
+  selectedPhotoFile.value = null
+  // Set preview dengan current avatar jika ada
+  if (userProfile.value?.avatar) {
+    photoPreviewUrl.value = `/${userProfile.value.avatar}`
+  } else {
+    photoPreviewUrl.value = null
+  }
+}
+
+const closePhotoUploadModal = () => {
+  showPhotoUploadModal.value = false
+  photoUploadError.value = ''
+  selectedPhotoFile.value = null
+  photoPreviewUrl.value = null
+  if (photoFileInput.value) {
+    photoFileInput.value.value = ''
+  }
+}
+
+const triggerPhotoFileInput = () => {
+  photoFileInput.value?.click()
+}
+
+const handlePhotoFileSelect = (event) => {
+  const file = event.target.files?.[0]
+  if (!file) return
+
+  // Validasi tipe file
+  const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/gif']
+  if (!validTypes.includes(file.type)) {
+    photoUploadError.value = 'Format file harus JPEG, PNG, JPG, atau GIF'
+    return
+  }
+
+  // Validasi ukuran (max 2MB)
+  if (file.size > 2 * 1024 * 1024) {
+    photoUploadError.value = 'Ukuran file maksimal 2MB'
+    return
+  }
+
+  selectedPhotoFile.value = file
+  photoUploadError.value = ''
+
+  // Tampilkan preview
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    photoPreviewUrl.value = e.target?.result
+  }
+  reader.readAsDataURL(file)
+}
+
+const uploadPhotoFromModal = async () => {
+  if (!selectedPhotoFile.value) {
+    photoUploadError.value = 'Pilih foto terlebih dahulu'
+    return
+  }
+
+  try {
+    photoUploadLoading.value = true
+    photoUploadError.value = ''
+
+    const token = localStorage.getItem('auth_token')
+    const formData = new FormData()
+    formData.append('avatar', selectedPhotoFile.value)
+
+    const response = await fetch('/api/v1/profile/photo', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Accept': 'application/json'
+      },
+      body: formData
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      if (data.errors && data.errors.avatar) {
+        photoUploadError.value = data.errors.avatar[0]
+      } else {
+        photoUploadError.value = data.message || 'Gagal mengunggah foto'
+      }
+      return
+    }
+
+    // Update profile dengan avatar baru
+    userProfile.value.avatar = data.data.avatar
+
+    // Update localStorage untuk sync ke header
+    localStorage.setItem('userProfile', JSON.stringify(userProfile.value))
+
+    // Dispatch custom event untuk notify Header component (storage event hanya untuk tab lain)
+    window.dispatchEvent(new Event('profile-updated'))
+
+    // Close modal
+    closePhotoUploadModal()
+
+    // Show success message
+    successMessage.value = 'Foto profil berhasil diperbarui!'
+    showSuccess.value = true
+    setTimeout(() => {
+      showSuccess.value = false
+    }, 3000)
+  } catch (error) {
+    photoUploadError.value = error.message || 'Terjadi kesalahan saat mengunggah foto'
+  } finally {
+    photoUploadLoading.value = false
+  }
+}
 
 // Function to get gradient based on membership level
 const getMembershipGradient = (level) => {
@@ -437,8 +571,49 @@ const handleEditSubmit = async () => {
 
   isLoading.value = true
   try {
-    await new Promise(resolve => setTimeout(resolve, 1500))
+    const token = localStorage.getItem('auth_token')
+    const method = activeEditTab.value === 'biodata' ? 'PUT' : 'POST'
+    const endpoint = activeEditTab.value === 'biodata' ? '/api/v1/auth/profile' : '/api/v1/auth/change-password'
     
+    const payload = activeEditTab.value === 'biodata' 
+      ? {
+          first_name: formData.first_name,
+          last_name: formData.last_name,
+          email: formData.email,
+          phone: formData.phone,
+          identityNumber: formData.identityNumber,
+          address: formData.address,
+          city: formData.city
+        }
+      : {
+          current_password: passwordData.currentPassword,
+          new_password: passwordData.newPassword
+        }
+
+    const response = await fetch(endpoint, {
+      method: method,
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify(payload)
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      // Handle validation errors
+      if (response.status === 422 && data.errors) {
+        Object.keys(data.errors).forEach(field => {
+          errors[field] = data.errors[field][0]
+        })
+      } else {
+        throw new Error(data.message || 'Gagal menyimpan perubahan')
+      }
+      return
+    }
+
     // Update user profile if biodata
     if (activeEditTab.value === 'biodata') {
       userProfile.value.first_name = formData.first_name
@@ -448,6 +623,9 @@ const handleEditSubmit = async () => {
       userProfile.value.identityNumber = formData.identityNumber
       userProfile.value.address = formData.address
       userProfile.value.city = formData.city
+      
+      // Save updated profile to localStorage
+      localStorage.setItem('userProfile', JSON.stringify(userProfile.value))
     }
     
     const message = activeEditTab.value === 'biodata' 
@@ -470,6 +648,8 @@ const handleEditSubmit = async () => {
     }, 2000)
   } catch (error) {
     console.error('Error updating profile:', error)
+    successMessage.value = error.message || 'Terjadi kesalahan saat menyimpan'
+    showSuccess.value = true
   } finally {
     isLoading.value = false
   }
@@ -553,8 +733,8 @@ const formatCurrency = (amount) => {
           <!-- User Profile Menu -->
           <div class="user-menu-wrapper">
             <button @click="showUserMenu = !showUserMenu" class="user-menu-btn">
-              <div class="user-avatar">
-                {{ userProfile?.first_name?.charAt(0) }}{{ userProfile?.last_name?.charAt(0) }}
+              <div class="user-avatar" :style="userProfile?.avatar ? { backgroundImage: `url(/${userProfile.avatar})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
+                <span v-if="!userProfile?.avatar">{{ userProfile?.first_name?.charAt(0) }}{{ userProfile?.last_name?.charAt(0) }}</span>
               </div>
               <span class="user-name">{{ userProfile?.first_name }} {{ userProfile?.last_name }}</span>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -583,9 +763,18 @@ const formatCurrency = (amount) => {
           <div class="profile-header-content">
             <!-- Avatar and Text Row -->
             <div class="profile-avatar-text">
-              <!-- Avatar -->
-              <div class="avatar">
-                {{ userProfile.initials }}
+              <!-- Avatar with Edit Icon -->
+              <div class="avatar-wrapper">
+                <div class="avatar" :style="userProfile?.avatar ? { backgroundImage: `url(/${userProfile.avatar})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}">
+                  <span v-if="!userProfile?.avatar">{{ userProfile.initials }}</span>
+                </div>
+                <!-- Edit Photo Button (Floating) -->
+                <button class="avatar-edit-btn" @click="openPhotoUploadModal" title="Edit Foto Profil">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25z"/>
+                    <path d="M20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+                  </svg>
+                </button>
               </div>
 
               <!-- Profile Info -->
@@ -1078,6 +1267,109 @@ const formatCurrency = (amount) => {
       </form>
     </div>
   </div>
+
+  <!-- Photo Upload Modal -->
+  <Transition name="fade-modal">
+    <div v-if="showPhotoUploadModal" class="photo-upload-modal-overlay" @click="closePhotoUploadModal">
+      <div class="photo-upload-modal" @click.stop>
+        <!-- Modal Header -->
+        <div class="modal-header">
+          <h2 class="modal-title">Unggah Foto Profil</h2>
+          <button class="modal-close-btn" @click="closePhotoUploadModal">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Modal Content -->
+        <div class="modal-content">
+          <!-- Preview -->
+          <div class="photo-preview-container">
+            <div class="photo-preview">
+              <img v-if="photoPreviewUrl" :src="photoPreviewUrl" alt="Preview" />
+              <div v-else class="photo-placeholder">
+                <div class="placeholder-initials">
+                  {{ userProfile?.first_name?.charAt(0) }}{{ userProfile?.last_name?.charAt(0) }}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- File Info -->
+          <div v-if="selectedPhotoFile" class="file-info">
+            <p class="file-name">{{ selectedPhotoFile.name }}</p>
+            <p class="file-size">{{ (selectedPhotoFile.size / 1024).toFixed(2) }} KB</p>
+          </div>
+
+          <!-- Error Message -->
+          <div v-if="photoUploadError" class="alert alert-error">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 8V12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              <circle cx="12" cy="16" r="1" fill="currentColor"/>
+            </svg>
+            {{ photoUploadError }}
+          </div>
+
+          <!-- Requirements -->
+          <div class="file-requirements">
+            <p class="requirements-title">Persyaratan:</p>
+            <ul class="requirements-list">
+              <li>Format: JPEG, PNG, JPG, GIF</li>
+              <li>Ukuran: Max 2MB</li>
+              <li>Dimensi: Min 200x200px</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Modal Actions -->
+        <div class="modal-actions">
+          <button 
+            type="button"
+            class="btn-select-file"
+            @click="triggerPhotoFileInput"
+            :disabled="photoUploadLoading"
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M21 15V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M17 8L12 3L7 8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+              <path d="M12 3V15" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            {{ selectedPhotoFile ? 'Pilih Foto Lain' : 'Pilih Foto' }}
+          </button>
+
+          <div class="modal-button-group">
+            <button 
+              type="button"
+              class="btn-cancel"
+              @click="closePhotoUploadModal"
+              :disabled="photoUploadLoading"
+            >
+              Batal
+            </button>
+            <button 
+              type="button"
+              class="btn-upload"
+              @click="uploadPhotoFromModal"
+              :disabled="!selectedPhotoFile || photoUploadLoading"
+            >
+              {{ photoUploadLoading ? 'Mengunggah...' : 'Unggah' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </Transition>
+
+  <!-- Hidden file input -->
+  <input
+    ref="photoFileInput"
+    type="file"
+    accept="image/*"
+    style="display: none"
+    @change="handlePhotoFileSelect"
+  />
 </template>
 
 <style scoped>
@@ -1912,6 +2204,40 @@ const formatCurrency = (amount) => {
   color: var(--color-white);
   flex-shrink: 0;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.avatar-wrapper {
+  position: relative;
+  width: fit-content;
+}
+
+.avatar-edit-btn {
+  position: absolute;
+  bottom: -8px;
+  right: -8px;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: #0066cc;
+  border: 3px solid white;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  box-shadow: 0 2px 8px rgba(0, 102, 204, 0.3);
+  padding: 0;
+}
+
+.avatar-edit-btn:hover {
+  background: #0052a3;
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.5);
+  transform: scale(1.1);
+}
+
+.avatar-edit-btn:active {
+  transform: scale(0.95);
 }
 
 .profile-info-text {
@@ -3153,6 +3479,299 @@ const formatCurrency = (amount) => {
     white-space: nowrap;
     flex-shrink: 0;
   }
+}
+
+/* Photo Upload Modal Styles */
+.photo-upload-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+}
+
+.photo-upload-modal {
+  background: white;
+  border-radius: 12px;
+  width: 95%;
+  max-width: 360px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+.modal-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 0;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  color: #666;
+  transition: color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close-btn:hover {
+  color: #1a1a1a;
+}
+
+.modal-content {
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.photo-preview-container {
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: center;
+}
+
+.photo-preview {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #e0e0e0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid #0066cc;
+}
+
+.photo-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.photo-placeholder {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+}
+
+.placeholder-initials {
+  font-size: 40px;
+  font-weight: 600;
+  color: white;
+}
+
+.file-info {
+  background: #f8f9fa;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.file-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1a1a1a;
+  margin: 0 0 0.25rem 0;
+  word-break: break-all;
+}
+
+.file-size {
+  font-size: 12px;
+  color: #666;
+  margin: 0;
+}
+
+.alert {
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.alert-error {
+  background: #ffebee;
+  color: #c62828;
+  border: 1px solid #ef5350;
+}
+
+.file-requirements {
+  background: #f0f4ff;
+  padding: 12px;
+  border-radius: 8px;
+  border-left: 4px solid #0066cc;
+  margin-bottom: 1rem;
+}
+
+.requirements-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: #666;
+  text-transform: uppercase;
+  margin: 0 0 8px 0;
+  letter-spacing: 0.5px;
+}
+
+.requirements-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 13px;
+  color: #666;
+}
+
+.requirements-list li {
+  padding: 4px 0;
+  padding-left: 20px;
+  position: relative;
+}
+
+.requirements-list li:before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: #0066cc;
+  font-weight: bold;
+}
+
+.modal-actions {
+  padding: 1rem 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid #e0e0e0;
+  flex-shrink: 0;
+  background: white;
+}
+
+.btn-select-file {
+  width: 100%;
+  padding: 10px 14px;
+  background: #f0f0f0;
+  color: #1a1a1a;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.3s ease;
+}
+
+.btn-select-file:hover:not(:disabled) {
+  background: #e0e0e0;
+  border-color: #d0d0d0;
+}
+
+.btn-select-file:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal-button-group {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-cancel {
+  flex: 1;
+  padding: 10px 14px;
+  background: #f0f0f0;
+  color: #1a1a1a;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-cancel:hover:not(:disabled) {
+  background: #e0e0e0;
+}
+
+.btn-cancel:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.btn-upload {
+  flex: 1;
+  padding: 10px 14px;
+  background: #0066cc;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-upload:hover:not(:disabled) {
+  background: #0052a3;
+  box-shadow: 0 4px 12px rgba(0, 102, 204, 0.3);
+}
+
+.btn-upload:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fade-modal-enter-active,
+.fade-modal-leave-active {
+  transition: opacity 0.3s ease;
+}
+
+.fade-modal-enter-from,
+.fade-modal-leave-to {
+  opacity: 0;
+}
+
+.fade-modal-enter-to,
+.fade-modal-leave-from {
+  opacity: 1;
 }
 
 </style>

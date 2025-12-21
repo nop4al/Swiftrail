@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Schema;
 use App\Models\Payment;
 use App\Models\SwiftPayWallet;
+use App\Models\SwiftPayTransaction;
 
 class MidtransController extends Controller
 {
@@ -176,6 +177,37 @@ class MidtransController extends Controller
     }
 
     /**
+     * Public: return payment details by order id (used by frontend as unauthenticated fallback)
+     */
+    public function getPayment($orderId)
+    {
+        try {
+            $payment = Payment::where('order_id', $orderId)->first();
+            if (!$payment) {
+                return response()->json(['status' => 'error', 'message' => 'Payment not found'], 404);
+            }
+
+            $amount = $payment->amount ?? 0;
+            $tax = $payment->tax ?? (int) round($amount * 0.11);
+            $total = $payment->total ?? ($amount + $tax);
+
+            return response()->json([
+                'status' => 'ok',
+                'data' => [
+                    'order_id' => $payment->order_id,
+                    'amount' => (int) $amount,
+                    'tax' => (int) $tax,
+                    'total' => (int) $total,
+                    'status' => $payment->status ?? null,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            logger()->error('getPayment failed: ' . $e->getMessage());
+            return response()->json(['status' => 'error', 'message' => 'Server error'], 500);
+        }
+    }
+
+    /**
      * Handle Midtrans finish callback
      */
     public function finish(Request $request)
@@ -234,6 +266,24 @@ class MidtransController extends Controller
                                 'amount' => $amount,
                                 'new_balance' => $wallet->balance,
                             ]);
+                            // Create a SwiftPayTransaction record for the topup
+                            try {
+                                SwiftPayTransaction::create([
+                                    'wallet_id' => $wallet->id,
+                                    'transaction_id' => 'TOPUP-' . time() . '-' . rand(1000, 9999),
+                                    'type' => 'topup',
+                                    'status' => 'success',
+                                    'amount' => $amount,
+                                    'balance_before' => $old_balance,
+                                    'balance_after' => $wallet->balance,
+                                    'payment_method' => 'midtrans',
+                                    'reference_number' => $payment->order_id,
+                                    'description' => 'Top up via Midtrans',
+                                    'completed_at' => now(),
+                                ]);
+                            } catch (\Exception $e) {
+                                logger()->warning('Failed to create SwiftPayTransaction: ' . $e->getMessage());
+                            }
                         } else {
                             logger()->warning('Wallet not found', [
                                 'user_id' => $payment->user_id,

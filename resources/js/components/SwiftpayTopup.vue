@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, onMounted, nextTick } from "vue";
+import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { useRouter } from "vue-router";
 
 const router = useRouter();
@@ -30,13 +30,17 @@ if (storedProfile) {
     try {
         const profile = JSON.parse(storedProfile);
         console.log("=== Parsed profile ===", profile);
-        
+
         const firstName = profile.first_name || profile.name || "-";
         const lastName = profile.last_name || "";
         const fullName = lastName ? `${firstName} ${lastName}` : firstName;
-        
-        console.log("=== Building fullName ===", { firstName, lastName, fullName });
-        
+
+        console.log("=== Building fullName ===", {
+            firstName,
+            lastName,
+            fullName,
+        });
+
         user.value = {
             name: fullName,
             email: profile.email || "-",
@@ -62,48 +66,89 @@ const successTotal = ref(0); // Track total for success page
 onMounted(async () => {
     // Check query params for payment callback
     const urlParams = new URLSearchParams(window.location.search);
-    const paymentStatus = urlParams.get('status');
-    const orderId = urlParams.get('order_id');
-    
+    const paymentStatus = urlParams.get("status");
+    const orderId = urlParams.get("order_id");
+
     console.log("=== Payment Callback ===");
     console.log("Status:", paymentStatus);
     console.log("Order ID:", orderId);
-    
-    if (paymentStatus === 'success') {
+
+    if (paymentStatus === "success") {
         console.log("Payment success detected!");
         currentStep.value = "success";
         // Clean up URL
-        window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (paymentStatus === 'error') {
+        window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+        );
+    } else if (paymentStatus === "error") {
         alert("Pembayaran gagal. Silakan coba lagi.");
         currentStep.value = "form";
-        window.history.replaceState({}, document.title, window.location.pathname);
-    } else if (paymentStatus === 'pending') {
+        window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+        );
+    } else if (paymentStatus === "pending") {
         alert("Pembayaran sedang diproses. Silakan tunggu...");
         currentStep.value = "form";
-        window.history.replaceState({}, document.title, window.location.pathname);
+        window.history.replaceState(
+            {},
+            document.title,
+            window.location.pathname
+        );
     }
-    
+
     await fetchUserData();
-    
+
     // Refresh wallet after payment success
-    if (paymentStatus === 'success') {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1s for backend to process
+    if (paymentStatus === "success") {
+        await new Promise((resolve) => setTimeout(resolve, 1000)); // Wait 1s for backend to process
+
+        // Try to read persisted last topup from localStorage first (fallback for unauthenticated redirect)
+        try {
+            const raw = localStorage.getItem("swiftpay_last_topup");
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (
+                    parsed &&
+                    parsed.order_id &&
+                    parsed.order_id.toString() === orderId
+                ) {
+                    successAmount.value =
+                        Number(parsed.amount) || successAmount.value;
+                    successTax.value = Number(parsed.tax) || successTax.value;
+                    successTotal.value =
+                        Number(parsed.total) || successTotal.value;
+                    // remove after use
+                    localStorage.removeItem("swiftpay_last_topup");
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to read swiftpay_last_topup", e);
+        }
+
+        // If amounts still zero, try to load from API
+        if (!successAmount.value && orderId) await loadSuccessDetails(orderId);
+
         await refreshWallet();
     }
-    
+
     await nextTick();
     console.log("Component mounted, user data:", user.value);
 });
 
 const refreshWallet = async () => {
     try {
-        const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
+        const token =
+            localStorage.getItem("auth_token") ||
+            sessionStorage.getItem("auth_token");
         if (!token) return;
-        
+
         const walletResponse = await fetch("/api/v1/swiftpay/wallet", {
             headers: {
-                "Authorization": `Bearer ${token}`,
+                Authorization: `Bearer ${token}`,
                 "Content-Type": "application/json",
             },
         });
@@ -112,9 +157,15 @@ const refreshWallet = async () => {
             const walletData = await walletResponse.json();
             console.log("=== Wallet Refreshed ===");
             console.log("Wallet data:", walletData);
-            
-            const balanceValue = walletData.data?.balance || walletData.data?.current_balance || 0;
-            user.value.balance = typeof balanceValue === 'string' ? parseFloat(balanceValue) : Number(balanceValue) || 0;
+
+            const balanceValue =
+                walletData.data?.balance ||
+                walletData.data?.current_balance ||
+                0;
+            user.value.balance =
+                typeof balanceValue === "string"
+                    ? parseFloat(balanceValue)
+                    : Number(balanceValue) || 0;
             console.log("New balance:", user.value.balance);
         }
     } catch (err) {
@@ -122,21 +173,315 @@ const refreshWallet = async () => {
     }
 };
 
+// Load success details (nominal, tax, total) by order_id by querying server-side payment table first (public),
+// then fallback to authenticated endpoints if needed.
+const loadSuccessDetails = async (orderId) => {
+    try {
+        // 1) try public endpoint backed by Payment table
+        try {
+            const res = await fetch(
+                `/api/v1/midtrans/payment/${encodeURIComponent(orderId)}`
+            );
+            if (res.ok) {
+                const json = await res.json();
+                if (json && json.data) {
+                    successAmount.value = Number(json.data.amount) || 0;
+                    successTax.value = Number(json.data.tax) || 0;
+                    successTotal.value = Number(json.data.total) || 0;
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn("Public payment lookup failed", e);
+        }
+
+        // 2) fallback: try authenticated endpoints (if token available)
+        const token =
+            localStorage.getItem("auth_token") ||
+            sessionStorage.getItem("auth_token");
+        if (!token) return;
+
+        const endpoints = [
+            "/api/v1/swiftpay/topups",
+            "/api/v1/swiftpay/history",
+            "/api/v1/swiftpay/transactions",
+        ];
+        for (const url of endpoints) {
+            try {
+                const res = await fetch(url, {
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                    },
+                });
+                if (!res.ok) continue;
+                const json = await res.json();
+                let items = null;
+                if (Array.isArray(json)) items = json;
+                else if (json.data && Array.isArray(json.data))
+                    items = json.data;
+                else if (json.items && Array.isArray(json.items))
+                    items = json.items;
+
+                if (!items) continue;
+
+                const match = items.find((it) => {
+                    const id =
+                        it.order_id ||
+                        it.orderId ||
+                        it.reference ||
+                        it.id ||
+                        it.transaction_id;
+                    return id && id.toString() === orderId.toString();
+                });
+
+                if (match) {
+                    // normalize fields
+                    const amt = Number(
+                        match.amount ??
+                            match.nominal ??
+                            match.value ??
+                            match.total ??
+                            match.gross_amount ??
+                            0
+                    );
+                    const tx = Number(
+                        match.tax ?? (amt ? Math.round(amt * 0.11) : 0)
+                    );
+                    const tot = Number(
+                        match.total ?? match.gross_amount ?? amt + tx
+                    );
+
+                    successAmount.value = amt;
+                    successTax.value = tx;
+                    successTotal.value = tot;
+                    return;
+                }
+            } catch (e) {
+                console.warn("loadSuccessDetails failed for", url, e);
+            }
+        }
+    } catch (e) {
+        console.error("loadSuccessDetails error", e);
+    }
+};
+
+/* TABS & HISTORY */
+const activeTab = ref("topup"); // 'topup' | 'history'
+const historyList = ref([]);
+const historyLoading = ref(false);
+const historyError = ref("");
+
+// underline animation state
+const tabsRef = ref(null);
+const underlineLeft = ref(0);
+const underlineWidth = ref(0);
+
+const updateUnderline = () => {
+    try {
+        const el = tabsRef.value;
+        if (!el) return;
+        const active = el.querySelector(".tab.active");
+        if (!active) {
+            underlineLeft.value = 0;
+            underlineWidth.value = 0;
+            return;
+        }
+        const tabsRect = el.getBoundingClientRect();
+        const btnRect = active.getBoundingClientRect();
+        underlineLeft.value = Math.round(
+            btnRect.left - tabsRect.left + el.scrollLeft
+        );
+        underlineWidth.value = Math.round(btnRect.width);
+    } catch (e) {
+        console.warn("updateUnderline failed", e);
+    }
+};
+
+// update on resize
+if (typeof window !== "undefined") {
+    window.addEventListener("resize", () => {
+        // small debounce
+        setTimeout(updateUnderline, 80);
+    });
+}
+
+const fetchHistory = async () => {
+    try {
+        historyLoading.value = true;
+        historyError.value = "";
+
+        let token =
+            localStorage.getItem("auth_token") ||
+            sessionStorage.getItem("auth_token");
+        if (!token && window.__AUTH_TOKEN__) token = window.__AUTH_TOKEN__;
+        if (!token) {
+            historyError.value = "Token tidak ditemukan.";
+            historyList.value = [];
+            return;
+        }
+
+        const urls = [
+            "/api/v1/swiftpay/history",
+            "/api/v1/swiftpay/topups",
+            "/api/v1/swiftpay/transactions",
+        ];
+
+        let data = null;
+        for (const url of urls) {
+            try {
+                const res = await fetch(url, {
+                    method: "GET",
+                    headers: {
+                        Authorization: `Bearer ${token}`,
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                });
+                const json = await res.json();
+                if (res.ok && json.data) {
+                    data = json.data;
+                    break;
+                }
+                if (res.ok && Array.isArray(json)) {
+                    data = json;
+                    break;
+                }
+            } catch (e) {
+                console.warn("fetchHistory failed for", url, e);
+            }
+        }
+
+        if (!data) {
+            historyList.value = [];
+            historyError.value = "Tidak ada riwayat.";
+            return;
+        }
+
+        // normalize raw data (support array or object shapes)
+        const raw = Array.isArray(data)
+            ? data
+            : data.items || data.transactions || [];
+        historyList.value = raw.map((t) => normalizeTransaction(t));
+    } catch (err) {
+        console.error(err);
+        historyError.value = err.message || "Gagal memuat riwayat.";
+    } finally {
+        historyLoading.value = false;
+    }
+};
+
+watch(activeTab, (v) => {
+    if (v === "history") fetchHistory();
+    // update underline after DOM updates
+    nextTick(() => updateUnderline());
+});
+
+// normalize transaction object (Midtrans or local API)
+const normalizeTransaction = (tx) => {
+    const orderId =
+        tx.order_id ||
+        tx.orderId ||
+        tx.reference_number ||
+        tx.reference ||
+        tx.transaction_id ||
+        tx.transactionId ||
+        tx.id ||
+        tx.order_id_raw ||
+        "-";
+    let timeRaw =
+        tx.transaction_time ||
+        tx.completed_at ||
+        tx.created_at ||
+        tx.date ||
+        tx.time ||
+        tx.timestamp ||
+        "";
+    let time = "-";
+    try {
+        if (timeRaw) {
+            const d = new Date(timeRaw);
+            if (!isNaN(d)) {
+                time = d.toLocaleString("id-ID", {
+                    dateStyle: "medium",
+                    timeStyle: "short",
+                });
+            } else {
+                time = timeRaw.toString();
+            }
+        }
+    } catch (e) {
+        time = timeRaw || "-";
+    }
+    const amount = Number(
+        tx.gross_amount || tx.amount || tx.total || tx.nominal || tx.value || 0
+    );
+    const method =
+        tx.payment_type ||
+        tx.payment_method ||
+        tx.method ||
+        tx.channel ||
+        tx.bank ||
+        (tx.raw && tx.raw.payment_type) ||
+        "-";
+    const rawStatus = (
+        tx.transaction_status ||
+        tx.status ||
+        tx.state ||
+        tx.raw_status ||
+        ""
+    )
+        .toString()
+        .toLowerCase();
+
+    let statusKey = "tertunda";
+    if (rawStatus.includes("pending")) statusKey = "tertunda";
+    else if (
+        rawStatus.includes("settlement") ||
+        rawStatus.includes("capture") ||
+        rawStatus.includes("success")
+    )
+        statusKey = "berhasil";
+    else if (rawStatus.includes("cancel") || rawStatus.includes("cancelled"))
+        statusKey = "dibatalkan";
+    else if (
+        rawStatus.includes("deny") ||
+        rawStatus.includes("expire") ||
+        rawStatus.includes("failure") ||
+        rawStatus.includes("failed") ||
+        rawStatus.includes("deny")
+    )
+        statusKey = "gagal";
+
+    return {
+        orderId,
+        time,
+        amount,
+        method,
+        statusKey,
+        raw: tx,
+    };
+};
+
 const fetchUserData = async () => {
     try {
         loading.value = true;
-        
+
         // Ambil dari localStorage
         const storedProfile = localStorage.getItem("userProfile");
-        const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
-        
+        const token =
+            localStorage.getItem("auth_token") ||
+            sessionStorage.getItem("auth_token");
+
         if (storedProfile) {
             try {
                 const profile = JSON.parse(storedProfile);
                 const firstName = profile.first_name || profile.name || "-";
                 const lastName = profile.last_name || "";
-                const fullName = lastName ? `${firstName} ${lastName}` : firstName;
-                
+                const fullName = lastName
+                    ? `${firstName} ${lastName}`
+                    : firstName;
+
                 user.value = {
                     name: fullName,
                     email: profile.email || "-",
@@ -154,7 +499,7 @@ const fetchUserData = async () => {
             try {
                 const walletResponse = await fetch("/api/v1/swiftpay/wallet", {
                     headers: {
-                        "Authorization": `Bearer ${token}`,
+                        Authorization: `Bearer ${token}`,
                         "Content-Type": "application/json",
                     },
                 });
@@ -162,9 +507,15 @@ const fetchUserData = async () => {
                 if (walletResponse.ok) {
                     const walletData = await walletResponse.json();
                     console.log("Wallet data:", walletData);
-                    
-                    const balanceValue = walletData.data?.balance || walletData.data?.current_balance || 0;
-                    user.value.balance = typeof balanceValue === 'string' ? parseFloat(balanceValue) : Number(balanceValue) || 0;
+
+                    const balanceValue =
+                        walletData.data?.balance ||
+                        walletData.data?.current_balance ||
+                        0;
+                    user.value.balance =
+                        typeof balanceValue === "string"
+                            ? parseFloat(balanceValue)
+                            : Number(balanceValue) || 0;
                     console.log("Balance updated:", user.value.balance);
                 }
             } catch (err) {
@@ -232,7 +583,10 @@ const handleAmount = (e) => {
 
 const format = (n) => {
     if (!n || isNaN(n)) return "0";
-    return Number(n).toLocaleString("id-ID", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    return Number(n).toLocaleString("id-ID", {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 0,
+    });
 };
 
 /* STEP: FORM -> INVOICE */
@@ -252,8 +606,10 @@ const goToInvoice = () => {
 const confirmPayment = async () => {
     try {
         loading.value = true;
-        const token = localStorage.getItem("auth_token") || sessionStorage.getItem("auth_token");
-        
+        const token =
+            localStorage.getItem("auth_token") ||
+            sessionStorage.getItem("auth_token");
+
         // Parse user ID dari localStorage
         let userId = null;
         const storedProfile = localStorage.getItem("userProfile");
@@ -282,15 +638,27 @@ const confirmPayment = async () => {
         successAmount.value = amount.value;
         successTax.value = tax.value;
         successTotal.value = total.value;
+        // persist last topup amounts locally so we can show them after redirect
+        try {
+            const last = {
+                order_id: orderId.value,
+                amount: Math.round(amount.value),
+                tax: Math.round(tax.value),
+                total: Math.round(total.value),
+            };
+            localStorage.setItem("swiftpay_last_topup", JSON.stringify(last));
+        } catch (e) {
+            console.warn("Failed to persist swiftpay_last_topup", e);
+        }
 
         console.log("=== PAYMENT REQUEST ===");
         console.log("Payload:", JSON.stringify(payload, null, 2));
 
         const res = await fetch("/api/v1/midtrans/create", {
             method: "POST",
-            headers: { 
+            headers: {
                 "Content-Type": "application/json",
-                "Authorization": token ? `Bearer ${token}` : "",
+                Authorization: token ? `Bearer ${token}` : "",
             },
             body: JSON.stringify(payload),
         });
@@ -301,22 +669,24 @@ const confirmPayment = async () => {
         console.log("Full response:", JSON.stringify(data, null, 2));
 
         if (!res.ok) {
-            throw new Error(`API Error: ${data.message || 'Unknown error'}`);
+            throw new Error(`API Error: ${data.message || "Unknown error"}`);
         }
 
         const redirectUrl = data.redirect_url ?? data.data?.redirect_url;
         console.log("Extracted redirect_url:", redirectUrl);
-        
+
         if (!redirectUrl) {
             console.error("No redirect URL found in response!");
             console.error("Response data:", data);
-            throw new Error("Midtrans tidak mengembalikan redirect URL. Response: " + JSON.stringify(data));
+            throw new Error(
+                "Midtrans tidak mengembalikan redirect URL. Response: " +
+                    JSON.stringify(data)
+            );
         }
 
         console.log("Redirecting to:", redirectUrl);
         // Redirect ke Midtrans payment page
         window.location.href = redirectUrl;
-
     } catch (e) {
         loading.value = false;
         console.error("=== PAYMENT ERROR ===");
@@ -335,11 +705,19 @@ const backToForm = () => {
 };
 
 const goToHistory = () => {
-    router.push({ name: "SwiftPay" });
+    activeTab.value = "history";
 };
 
 const goToProfile = () => {
     router.push({ name: "Profile" });
+};
+
+const goHome = () => {
+    router.push({ name: "Home" });
+};
+
+const goToSwiftpayPage = () => {
+    router.push({ name: "SwiftPay" });
 };
 
 /* MODAL CONTROL */
@@ -355,8 +733,19 @@ const closeModal = () => {
             <div class="modal-content">
                 <!-- Close button -->
                 <button class="modal-close-btn" @click="closeModal">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+                    <svg
+                        width="24"
+                        height="24"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        xmlns="http://www.w3.org/2000/svg"
+                    >
+                        <path
+                            d="M18 6L6 18M6 6L18 18"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                        />
                     </svg>
                 </button>
 
@@ -373,222 +762,359 @@ const closeModal = () => {
                                             viewBox="0 0 24 24"
                                             fill="none"
                                             xmlns="http://www.w3.org/2000/svg"
-                        >
-                            <rect
-                                width="24"
-                                height="24"
-                                rx="6"
-                                fill="#1675E7"
-                            />
-                            <path
-                                d="M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V14C18 15.1046 17.1046 16 16 16H8C6.89543 16 6 15.1046 6 14V8Z"
-                                fill="white"
-                            />
-                            <rect
-                                x="8"
-                                y="8"
-                                width="3"
-                                height="2"
-                                rx="0.5"
-                                fill="#1675E7"
-                            />
-                            <rect
-                                x="13"
-                                y="8"
-                                width="3"
-                                height="2"
-                                rx="0.5"
-                                fill="#1675E7"
-                            />
-                            <circle cx="9" cy="18" r="1.5" fill="white" />
-                            <circle cx="15" cy="18" r="1.5" fill="white" />
-                        </svg>
+                                        >
+                                            <rect
+                                                width="24"
+                                                height="24"
+                                                rx="6"
+                                                fill="#1675E7"
+                                            />
+                                            <path
+                                                d="M6 8C6 6.89543 6.89543 6 8 6H16C17.1046 6 18 6.89543 18 8V14C18 15.1046 17.1046 16 16 16H8C6.89543 16 6 15.1046 6 14V8Z"
+                                                fill="white"
+                                            />
+                                            <rect
+                                                x="8"
+                                                y="8"
+                                                width="3"
+                                                height="2"
+                                                rx="0.5"
+                                                fill="#1675E7"
+                                            />
+                                            <rect
+                                                x="13"
+                                                y="8"
+                                                width="3"
+                                                height="2"
+                                                rx="0.5"
+                                                fill="#1675E7"
+                                            />
+                                            <circle
+                                                cx="9"
+                                                cy="18"
+                                                r="1.5"
+                                                fill="white"
+                                            />
+                                            <circle
+                                                cx="15"
+                                                cy="18"
+                                                r="1.5"
+                                                fill="white"
+                                            />
+                                        </svg>
+                                    </div>
+                                    <div class="logo-text">
+                                        <span class="logo-title">SwiftPay</span>
+                                        <span class="logo-subtitle"
+                                            >SUPER APP</span
+                                        >
+                                    </div>
+                                </div>
+
+                                <nav class="nav">
+                                    <button
+                                        class="nav-link"
+                                        @click="goToProfile"
+                                    >
+                                        Profile
+                                    </button>
+                                    <button
+                                        class="nav-link"
+                                        @click="goToHistory"
+                                    >
+                                        History
+                                    </button>
+                                </nav>
+                            </div>
+                        </header>
+
+                        <div class="tabs">
+                            <button
+                                :class="[
+                                    'tab',
+                                    { active: activeTab === 'topup' },
+                                ]"
+                                @click="activeTab = 'topup'"
+                            >
+                                Top Up
+                            </button>
+                            <button
+                                :class="[
+                                    'tab',
+                                    { active: activeTab === 'history' },
+                                ]"
+                                @click="activeTab = 'history'"
+                            >
+                                Riwayat Top Up
+                            </button>
+                        </div>
+
+                        <main v-if="activeTab === 'topup'" class="container">
+                            <section class="left">
+                                <div class="card profile">
+                                    <h3>{{ user.name || "-" }}</h3>
+                                    <p>{{ user.email || "-" }}</p>
+                                    <p>ID: {{ user.id || "-" }}</p>
+
+                                    <div class="balance">
+                                        <span>Saldo Anda: </span>
+                                        <strong
+                                            >Rp
+                                            {{ format(user.balance) }}</strong
+                                        >
+                                    </div>
+                                </div>
+
+                                <div class="card">
+                                    <h3>Nominal Top Up SwiftPay</h3>
+
+                                    <input
+                                        type="text"
+                                        :value="displayAmount"
+                                        @input="handleAmount"
+                                        placeholder="Rp 0"
+                                    />
+
+                                    <small class="hint">
+                                        Minimal Rp 10.000 · Maksimal Rp
+                                        1.000.000
+                                    </small>
+
+                                    <small v-if="amountError" class="error">
+                                        {{ amountError }}
+                                    </small>
+                                </div>
+                            </section>
+
+                            <aside class="checkout">
+                                <h3>Ringkasan Top Up SwiftPay</h3>
+
+                                <div class="summary">
+                                    <p class="label">Nominal Top Up</p>
+                                    <p class="value">Rp {{ format(amount) }}</p>
+                                </div>
+
+                                <div class="field">
+                                    <label>Email (opsional)</label>
+                                    <input
+                                        type="email"
+                                        placeholder="contoh@email.com"
+                                        v-model="emailInput"
+                                    />
+                                </div>
+
+                                <div class="info-box">
+                                    ℹ️ Saldo SwiftPay akan bertambah setelah
+                                    pembayaran berhasil.
+                                </div>
+
+                                <button
+                                    :disabled="!canPay"
+                                    class="pay-btn"
+                                    @click="goToInvoice"
+                                >
+                                    Bayar Sekarang
+                                </button>
+
+                                <p class="legal">
+                                    Dengan melanjutkan, Anda menyetujui
+                                    <span>Syarat & Ketentuan</span> SwiftPay.
+                                </p>
+                            </aside>
+                        </main>
+
+                        <!-- HISTORY VIEW (modal) -->
+                        <main v-if="activeTab === 'history'" class="container">
+                            <section class="left">
+                                <div class="card">
+                                    <h3>Riwayat Top Up</h3>
+
+                                    <div
+                                        v-if="historyLoading"
+                                        class="loading-skeleton"
+                                    >
+                                        <div class="skeleton-line"></div>
+                                        <div class="skeleton-line short"></div>
+                                    </div>
+
+                                    <div v-else>
+                                        <div v-if="historyError" class="error">
+                                            {{ historyError }}
+                                        </div>
+
+                                        <div
+                                            v-else-if="historyList.length === 0"
+                                            class="hint"
+                                        >
+                                            Belum ada riwayat top up.
+                                        </div>
+
+                                        <ul v-else class="history-list">
+                                            <li
+                                                v-for="(tx, i) in historyList"
+                                                :key="tx.orderId || i"
+                                                class="history-item"
+                                            >
+                                                <div class="history-left">
+                                                    <div class="history-order">
+                                                        {{ tx.orderId }}
+                                                    </div>
+                                                    <div class="history-date">
+                                                        {{ tx.time }}
+                                                    </div>
+                                                </div>
+
+                                                <div class="history-middle">
+                                                    <div class="history-amount">
+                                                        Rp
+                                                        {{ format(tx.amount) }}
+                                                    </div>
+                                                    <div class="history-method">
+                                                        {{ tx.method }}
+                                                    </div>
+                                                </div>
+
+                                                <div class="history-right">
+                                                    <span class="status-badge">
+                                                        <span
+                                                            :class="[
+                                                                'status-dot',
+                                                                tx.statusKey,
+                                                            ]"
+                                                        ></span>
+                                                        <span
+                                                            class="status-label"
+                                                            >{{
+                                                                tx.statusKey
+                                                            }}</span
+                                                        >
+                                                    </span>
+                                                </div>
+                                            </li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </section>
+
+                            <aside class="checkout">
+                                <div class="card">
+                                    <h4>Informasi</h4>
+                                    <p class="hint">
+                                        Anda dapat melihat riwayat top up di
+                                        sini.
+                                    </p>
+                                </div>
+                            </aside>
+                        </main>
                     </div>
-                    <div class="logo-text">
-                        <span class="logo-title">SwiftPay</span>
-                        <span class="logo-subtitle">SUPER APP</span>
+
+                    <!-- STEP 2: INVOICE POPUP -->
+                    <div v-if="currentStep === 'invoice'" class="invoice-page">
+                        <div class="invoice-card">
+                            <button
+                                type="button"
+                                class="back-btn"
+                                @click="goBackToForm"
+                            >
+                                ×
+                            </button>
+
+                            <div class="invoice-top">
+                                <p class="method">SwiftPay Top Up</p>
+
+                                <p class="total">IDR {{ format(total) }}</p>
+                            </div>
+
+                            <div class="invoice-bottom">
+                                <div class="row">
+                                    <span>Order ID</span>
+                                    <span>{{ orderId }}</span>
+                                </div>
+                                <div class="row">
+                                    <span>Transaction ID</span>
+                                    <span>{{ transactionId }}</span>
+                                </div>
+                                <div class="row">
+                                    <span>Tanggal Transaksi</span>
+                                    <span>{{ transactionDate }}</span>
+                                </div>
+
+                                <hr />
+
+                                <div class="row">
+                                    <span>Harga</span>
+                                    <span>IDR {{ format(amount) }}</span>
+                                </div>
+                                <div class="row">
+                                    <span>Tax (PPN 11%)</span>
+                                    <span>IDR {{ format(tax) }}</span>
+                                </div>
+
+                                <div class="row total-row">
+                                    <span>Total</span>
+                                    <span>IDR {{ format(total) }}</span>
+                                </div>
+
+                                <button
+                                    class="confirm-btn"
+                                    @click="confirmPayment"
+                                >
+                                    KONFIRMASI
+                                </button>
+
+                                <p class="legal">
+                                    Dengan klik "Konfirmasi", Anda menyetujui
+                                    Syarat & Ketentuan SwiftPay
+                                </p>
+                            </div>
+                        </div>
                     </div>
-                </div>
 
-                <nav class="nav">
-                    <button class="nav-link" @click="goToProfile">
-                        Profile
-                    </button>
-                    <button class="nav-link" @click="goToHistory">
-                        History
-                    </button>
-                </nav>
-            </div>
-        </header>
+                    <!-- STEP 3: SUCCESS POPUP -->
+                    <div v-if="currentStep === 'success'" class="success-page">
+                        <div class="success-card">
+                            <div class="icon">✅</div>
 
-        <main class="container">
-            <section class="left">
-                <div class="card profile">
-                    <h3>{{ user.name || '-' }}</h3>
-                    <p>{{ user.email || '-' }}</p>
-                    <p>ID: {{ user.id || '-' }}</p>
+                            <h2>Top Up Berhasil</h2>
+                            <p class="subtitle">
+                                Saldo SwiftPay Anda telah berhasil ditambahkan
+                            </p>
 
-                    <div class="balance">
-                        <span>Saldo Anda: </span>
-                        <strong>Rp {{ format(user.balance) }}</strong>
-                    </div>
-                </div>
+                            <div class="summary">
+                                <div class="row">
+                                    <span>Nominal Top Up</span>
+                                    <span>IDR {{ format(successAmount) }}</span>
+                                </div>
 
-                <div class="card">
-                    <h3>Nominal Top Up SwiftPay</h3>
+                                <div class="row">
+                                    <span>Tax (PPN 11%)</span>
+                                    <span>IDR {{ format(successTax) }}</span>
+                                </div>
 
-                    <input
-                        type="text"
-                        :value="displayAmount"
-                        @input="handleAmount"
-                        placeholder="Rp 0"
-                    />
+                                <div class="row total">
+                                    <span>Total</span>
+                                    <span>IDR {{ format(successTotal) }}</span>
+                                </div>
 
-                    <small class="hint">
-                        Minimal Rp 10.000 · Maksimal Rp 1.000.000
-                    </small>
+                                <div class="row">
+                                    <span>Tanggal</span>
+                                    <span>{{ transactionDate }}</span>
+                                </div>
+                            </div>
 
-                    <small v-if="amountError" class="error">
-                        {{ amountError }}
-                    </small>
-                </div>
-            </section>
+                            <div class="actions">
+                                <button class="primary" @click="goHome">
+                                    Beranda
+                                </button>
 
-            <aside class="checkout">
-                <h3>Ringkasan Top Up SwiftPay</h3>
-
-                <div class="summary">
-                    <p class="label">Nominal Top Up</p>
-                    <p class="value">Rp {{ format(amount) }}</p>
-                </div>
-
-                <div class="field">
-                    <label>Email (opsional)</label>
-                    <input
-                        type="email"
-                        placeholder="contoh@email.com"
-                        v-model="emailInput"
-                    />
-                </div>
-
-                <div class="info-box">
-                    ℹ️ Saldo SwiftPay akan bertambah setelah pembayaran
-                    berhasil.
-                </div>
-
-                <button
-                    :disabled="!canPay"
-                    class="pay-btn"
-                    @click="goToInvoice"
-                >
-                    Bayar Sekarang
-                </button>
-
-                <p class="legal">
-                    Dengan melanjutkan, Anda menyetujui
-                    <span>Syarat & Ketentuan</span> SwiftPay.
-                </p>
-            </aside>
-        </main>
-    </div>
-
-    <!-- STEP 2: INVOICE POPUP -->
-    <div v-if="currentStep === 'invoice'" class="invoice-page">
-        <div class="invoice-card">
-            <button type="button" class="back-btn" @click="goBackToForm">
-                ×
-            </button>
-
-            <div class="invoice-top">
-                <p class="method">SwiftPay Top Up</p>
-
-                <p class="total">IDR {{ format(total) }}</p>
-            </div>
-
-            <div class="invoice-bottom">
-                <div class="row">
-                    <span>Order ID</span>
-                    <span>{{ orderId }}</span>
-                </div>
-                <div class="row">
-                    <span>Transaction ID</span>
-                    <span>{{ transactionId }}</span>
-                </div>
-                <div class="row">
-                    <span>Tanggal Transaksi</span>
-                    <span>{{ transactionDate }}</span>
-                </div>
-
-                <hr />
-
-                <div class="row">
-                    <span>Harga</span>
-                    <span>IDR {{ format(amount) }}</span>
-                </div>
-                <div class="row">
-                    <span>Tax (PPN 11%)</span>
-                    <span>IDR {{ format(tax) }}</span>
-                </div>
-
-                <div class="row total-row">
-                    <span>Total</span>
-                    <span>IDR {{ format(total) }}</span>
-                </div>
-
-                <button class="confirm-btn" @click="confirmPayment">
-                    KONFIRMASI
-                </button>
-
-                <p class="legal">
-                    Dengan klik "Konfirmasi", Anda menyetujui Syarat & Ketentuan
-                    SwiftPay
-                </p>
-            </div>
-        </div>
-    </div>
-
-    <!-- STEP 3: SUCCESS POPUP -->
-    <div v-if="currentStep === 'success'" class="success-page">
-        <div class="success-card">
-            <div class="icon">✅</div>
-
-            <h2>Top Up Berhasil</h2>
-            <p class="subtitle">
-                Saldo SwiftPay Anda telah berhasil ditambahkan
-            </p>
-
-            <div class="summary">
-                <div class="row">
-                    <span>Nominal Top Up</span>
-                    <span>IDR {{ format(amount) }}</span>
-                </div>
-
-                <div class="row">
-                    <span>Tax (PPN 11%)</span>
-                    <span>IDR {{ format(tax) }}</span>
-                </div>
-
-                <div class="row total">
-                    <span>Total</span>
-                    <span>IDR {{ format(total) }}</span>
-                </div>
-
-                <div class="row">
-                    <span>Tanggal</span>
-                    <span>{{ transactionDate }}</span>
-                </div>
-            </div>
-
-            <div class="actions">
-                <button class="primary" @click="backToForm">
-                    Kembali ke Top Up
-                </button>
-
-                <button class="secondary" @click="goToHistory">
-                    Lihat Riwayat
-                </button>
-            </div>
-        </div>
+                                <button
+                                    class="secondary"
+                                    @click="goToSwiftpayPage"
+                                >
+                                    Ke SwiftPay
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -656,12 +1182,27 @@ const closeModal = () => {
                 </div>
             </header>
 
-            <main class="container">
+            <div class="tabs">
+                <button
+                    :class="['tab', { active: activeTab === 'topup' }]"
+                    @click="activeTab = 'topup'"
+                >
+                    Top Up
+                </button>
+                <button
+                    :class="['tab', { active: activeTab === 'history' }]"
+                    @click="activeTab = 'history'"
+                >
+                    Riwayat Top Up
+                </button>
+            </div>
+
+            <main v-if="activeTab === 'topup'" class="container">
                 <section class="left">
                     <div class="card profile">
-                        <h3>{{ user.name || '-' }}</h3>
-                        <p>{{ user.email || '-' }}</p>
-                        <p>ID: {{ user.id || '-' }}</p>
+                        <h3>{{ user.name || "-" }}</h3>
+                        <p>{{ user.email || "-" }}</p>
+                        <p>ID: {{ user.id || "-" }}</p>
 
                         <div class="balance">
                             <span>Saldo Anda: </span>
@@ -725,9 +1266,89 @@ const closeModal = () => {
                                 @click="confirmPayment"
                                 :disabled="amount <= 0 || loading"
                             >
-                                {{ loading ? "Loading..." : "Lanjutkan Pembayaran" }}
+                                {{
+                                    loading
+                                        ? "Loading..."
+                                        : "Lanjutkan Pembayaran"
+                                }}
                             </button>
                         </div>
+                    </div>
+                </section>
+            </main>
+
+            <!-- HISTORY VIEW (page) -->
+            <main v-if="activeTab === 'history'" class="container">
+                <section class="left">
+                    <div class="card">
+                        <h3>Riwayat Top Up</h3>
+
+                        <div v-if="historyLoading" class="loading-skeleton">
+                            <div class="skeleton-line"></div>
+                            <div class="skeleton-line short"></div>
+                        </div>
+
+                        <div v-else>
+                            <div v-if="historyError" class="error">
+                                {{ historyError }}
+                            </div>
+
+                            <div
+                                v-else-if="historyList.length === 0"
+                                class="hint"
+                            >
+                                Belum ada riwayat top up.
+                            </div>
+
+                            <ul v-else class="history-list">
+                                <li
+                                    v-for="(tx, i) in historyList"
+                                    :key="tx.orderId || i"
+                                    class="history-item"
+                                >
+                                    <div class="history-left">
+                                        <div class="history-order">
+                                            {{ tx.orderId }}
+                                        </div>
+                                        <div class="history-date">
+                                            {{ tx.time }}
+                                        </div>
+                                    </div>
+
+                                    <div class="history-middle">
+                                        <div class="history-amount">
+                                            Rp {{ format(tx.amount) }}
+                                        </div>
+                                        <div class="history-method">
+                                            {{ tx.method }}
+                                        </div>
+                                    </div>
+
+                                    <div class="history-right">
+                                        <span class="status-badge">
+                                            <span
+                                                :class="[
+                                                    'status-dot',
+                                                    tx.statusKey,
+                                                ]"
+                                            ></span>
+                                            <span class="status-label">{{
+                                                tx.statusKey
+                                            }}</span>
+                                        </span>
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="right">
+                    <div class="card">
+                        <h4>Informasi</h4>
+                        <p class="hint">
+                            Anda dapat melihat riwayat top up di sini.
+                        </p>
                     </div>
                 </section>
             </main>
@@ -784,45 +1405,59 @@ const closeModal = () => {
                     Ubah Nominal
                 </button>
 
-                <button class="primary" @click="processPayment" :disabled="loading">
+                <button
+                    class="primary"
+                    @click="processPayment"
+                    :disabled="loading"
+                >
                     {{ loading ? "Loading..." : "Proses Pembayaran" }}
                 </button>
             </div>
         </div>
 
         <!-- STEP 3: SUCCESS -->
-        <div v-if="currentStep === 'success'" class="success-card">
-            <div class="success-icon">✓</div>
+        <div v-if="currentStep === 'success'" class="page-success-overlay">
+            <div class="success-card">
+                <div class="success-icon">✓</div>
 
-            <h2>Pembayaran Berhasil!</h2>
+                <h2>Pembayaran Berhasil!</h2>
 
-            <p>Saldo Anda telah ditambahkan</p>
+                <p>Saldo Anda telah ditambahkan</p>
 
-            <div class="details">
-                <div class="row">
-                    <span>Nomor Pesanan</span>
-                    <span>{{ orderId }}</span>
+                <div class="details">
+                    <div class="row">
+                        <span>Nomor Pesanan</span>
+                        <span>{{ orderId }}</span>
+                    </div>
+
+                    <div class="row">
+                        <span>Nominal Top Up</span>
+                        <span>IDR {{ format(successAmount) }}</span>
+                    </div>
+
+                    <div class="row">
+                        <span>Tax (PPN 11%)</span>
+                        <span>IDR {{ format(successTax) }}</span>
+                    </div>
+
+                    <div class="row">
+                        <span>Total</span>
+                        <span>IDR {{ format(successTotal) }}</span>
+                    </div>
+
+                    <div class="row">
+                        <span>Waktu</span>
+                        <span>{{ transactionDate }}</span>
+                    </div>
                 </div>
 
-                <div class="row">
-                    <span>Jumlah</span>
-                    <span>IDR {{ format(successTotal) }}</span>
+                <div class="actions">
+                    <button class="primary" @click="goHome">Beranda</button>
+
+                    <button class="secondary" @click="goToSwiftpayPage">
+                        Ke SwiftPay
+                    </button>
                 </div>
-
-                <div class="row">
-                    <span>Waktu</span>
-                    <span>{{ transactionDate }}</span>
-                </div>
-            </div>
-
-            <div class="actions">
-                <button class="primary" @click="goToProfile">
-                    Ke Profil
-                </button>
-
-                <button class="secondary" @click="goToHistory">
-                    Lihat Riwayat
-                </button>
             </div>
         </div>
     </template>
@@ -1090,7 +1725,7 @@ const closeModal = () => {
 }
 
 .card .row[style*="font-weight: 700"] span:last-child {
-    color: #1675E7;
+    color: #1675e7;
     font-size: 18px;
 }
 
@@ -1238,6 +1873,23 @@ input:focus {
     z-index: 1000;
 }
 
+/* Page-mode success overlay (ensure not cut by fixed header) */
+.page-success-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.18);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    /* leave some space for fixed header */
+    padding-top: calc(64px + 20px);
+    z-index: 1000;
+}
+
 .success-card {
     width: 420px;
     background: white;
@@ -1375,5 +2027,116 @@ input:focus {
         width: 100%;
         max-width: 420px;
     }
+}
+
+/* Tabs & History styles */
+.tabs {
+    max-width: 1200px;
+    margin: -30px auto 0; /* pull tabs closer to header */
+    padding: 0 1.5rem;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-start;
+}
+
+.tab {
+    padding: 8px 14px;
+    background: white;
+    border-radius: 999px;
+    border: 1px solid #e5e7eb;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.tab.active {
+    background: #1e88e5;
+    color: white;
+    border-color: #1e88e5;
+}
+
+.history-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.history-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px;
+    border-radius: 10px;
+    background: #f8f9ff;
+}
+
+.history-amount {
+    font-weight: 700;
+}
+
+.history-date {
+    font-size: 12px;
+    color: #6b7280;
+}
+
+.history-left {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    min-width: 200px;
+}
+
+.history-middle {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-end;
+    flex: 1;
+}
+
+.history-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 120px;
+    justify-content: flex-end;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255, 255, 255, 0.06);
+    padding: 6px 10px;
+    border-radius: 999px;
+}
+
+.status-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+/* status colors */
+.status-dot.tertunda {
+    background: #f59e0b;
+} /* amber */
+.status-dot.berhasil {
+    background: #10b981;
+} /* green */
+.status-dot.gagal {
+    background: #ef4444;
+} /* red */
+.status-dot.dibatalkan {
+    background: #6b7280;
+} /* gray */
+
+.status-label {
+    font-size: 13px;
+    color: #374151;
+    text-transform: capitalize;
 }
 </style>
