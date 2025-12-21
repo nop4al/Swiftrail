@@ -17,7 +17,9 @@ class TrackingLiveController extends Controller
         $train = Train::where('code', $train_code)->first();
         if (!$train) return response()->json(['message' => 'Train not found'], 404);
 
-        $stops = $train->stops()->with('station')->get();
+        $stops = $train->stops()->with(['station' => function($q) {
+            $q->with('tourism');
+        }])->get();
         if ($stops->count() < 1) return response()->json(['message' => 'No stops for this train'], 422);
 
         $baseDate = $now->copy()->startOfDay();
@@ -82,26 +84,60 @@ class TrackingLiveController extends Controller
                 }
 
                 return response()->json([
-                    'train' => ['code' => $train->code, 'name' => $train->name],
-                    'status' => 'ON_ROUTE',
-                    'updated_at' => $now->toIso8601String(),
-                    'from_station' => $fromSt->name,
-                    'to_station' => $toSt->name,
-                    'segment_progress' => $p,
-                    'overall_progress' => $this->overallProgress($timeline, $now),
-                    'lat' => $lat,
-                    'lng' => $lng,
-                    'note' => ($lat === null ? 'Koordinat stasiun belum lengkap (isi stations.lat/lng)' : null),
+                    'success' => true,
+                    'data' => [
+                        'train' => ['code' => $train->code, 'name' => $train->name],
+                        'status' => 'ON_ROUTE',
+                        'updated_at' => $now->toIso8601String(),
+                        'from_station' => $fromSt->name,
+                        'to_station' => $toSt->name,
+                        'segment_progress' => $p,
+                        'overall_progress' => $this->overallProgress($timeline, $now),
+                        'lat' => $lat,
+                        'lng' => $lng,
+                        'stops' => $stops->map(function($stop) {
+                            return [
+                                'station' => [
+                                    'id' => $stop->station->id,
+                                    'name' => $stop->station->name,
+                                    'code' => $stop->station->code,
+                                    'latitude' => $stop->station->latitude,
+                                    'longitude' => $stop->station->longitude,
+                                    'tourism' => $stop->station->tourism ?? []
+                                ],
+                                'arrival_time' => $stop->arrival_time,
+                                'departure_time' => $stop->departure_time,
+                                'sequence' => $stop->sequence,
+                            ];
+                        })->toArray(),
+                    ]
                 ]);
             }
         }
 
         return response()->json([
-            'train' => ['code' => $train->code, 'name' => $train->name],
-            'status' => 'UNKNOWN',
-            'updated_at' => $now->toIso8601String(),
-            'overall_progress' => $this->overallProgress($timeline, $now),
-            'note' => 'Tidak menemukan segmen aktif (cek data jadwal).',
+            'success' => true,
+            'data' => [
+                'train' => ['code' => $train->code, 'name' => $train->name],
+                'status' => 'UNKNOWN',
+                'updated_at' => $now->toIso8601String(),
+                'overall_progress' => $this->overallProgress($timeline, $now),
+                'stops' => $stops->map(function($stop) {
+                    return [
+                        'station' => [
+                            'id' => $stop->station->id,
+                            'name' => $stop->station->name,
+                            'code' => $stop->station->code,
+                            'latitude' => $stop->station->latitude,
+                            'longitude' => $stop->station->longitude,
+                            'tourism' => $stop->station->tourism ?? []
+                        ],
+                        'arrival_time' => $stop->arrival_time,
+                        'departure_time' => $stop->departure_time,
+                        'sequence' => $stop->sequence,
+                    ];
+                })->toArray(),
+            ]
         ]);
     }
 

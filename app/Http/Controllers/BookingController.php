@@ -85,78 +85,38 @@ class BookingController extends Controller
     public function show($id)
     {
         try {
-            // Find by id, booking_code, or ticket_number
-            $booking = Booking::where(function ($query) use ($id) {
-                $query->where('id', $id)
-                    ->orWhere('booking_code', $id)
-                    ->orWhere('ticket_number', $id);
-            })
-            ->with(['schedule.train', 'schedule.fromStation', 'schedule.toStation'])
-            ->first();
-
-            if (!$booking) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Booking not found'
-                ], 404);
-            }
-
+            $booking = Booking::findOrFail($id);
+            
             $user = auth()->user();
-            if ($user && $user->id !== $booking->user_id && $user->role !== 'admin') {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized'
-                ], 403);
+            if ($user && $user->id !== $booking->user_id) {
+                return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
             }
 
             $schedule = $booking->schedule;
-            $train = $schedule->train;
+            $train = $schedule ? $schedule->train : null;
 
             return response()->json([
                 'success' => true,
                 'data' => [
                     'id' => $booking->id,
                     'booking_code' => $booking->booking_code,
-                    'ticket_number' => $booking->ticket_number,
-                    'qr_code' => $booking->qr_code,
-                    'passenger_name' => $booking->passenger_name,
-                    'nik' => $booking->nik,
-                    'passenger_type' => $booking->passenger_type,
-                    'seat_number' => $booking->seat_number,
-                    'class' => $booking->class,
-                    'price' => $booking->price,
                     'status' => $booking->status,
-                    'created_at' => $booking->created_at,
-                    'train' => [
+                    'train' => $train ? [
                         'id' => $train->id,
                         'name' => $train->name,
-                        'number' => $train->train_number ?? 'N/A',
-                        'type' => $train->type ?? 'N/A'
-                    ],
-                    'schedule' => [
+                        'code' => $train->code
+                    ] : null,
+                    'schedule' => $schedule ? [
                         'id' => $schedule->id,
                         'departure_time' => $schedule->departure_time,
-                        'arrival_time' => $schedule->arrival_time,
-                        'travel_date' => $schedule->travel_date,
-                        'available_seats' => $schedule->available_seats ?? 0,
-                        'price' => $schedule->price
-                    ],
-                    'from_station' => [
-                        'id' => $schedule->fromStation->id ?? null,
-                        'name' => $schedule->fromStation->name ?? 'N/A',
-                        'code' => $schedule->fromStation->code ?? 'N/A'
-                    ],
-                    'to_station' => [
-                        'id' => $schedule->toStation->id ?? null,
-                        'name' => $schedule->toStation->name ?? 'N/A',
-                        'code' => $schedule->toStation->code ?? 'N/A'
-                    ]
+                        'arrival_time' => $schedule->arrival_time
+                    ] : null
                 ]
             ]);
         } catch (\Exception $e) {
             return response()->json([
                 'success' => false,
-                'message' => $e->getMessage()
+                'message' => 'Error: ' . $e->getMessage()
             ], 500);
         }
     }

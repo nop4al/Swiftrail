@@ -59,12 +59,6 @@ const showNotificationModal = ref(false)
 const notificationMessage = ref('')
 const notificationType = ref('info') // 'info', 'warning', 'error', 'success'
 
-// Modal untuk tracking search
-const showTrackingModal = ref(false)
-const trackingTrainCode = ref('')
-const isLoadingTracking = ref(false)
-const trackingError = ref('')
-
 // Fetch data saat component mounted
 onMounted(async () => {
   try {
@@ -251,47 +245,6 @@ const searchTrains = async () => {
   }
 }
 
-const openTrackingModal = () => {
-  showTrackingModal.value = true
-  trackingTrainCode.value = ''
-  trackingError.value = ''
-  document.body.classList.add('modal-open')
-  document.body.style.overflow = 'hidden'
-}
-
-const closeTrackingModal = () => {
-  showTrackingModal.value = false
-  document.body.classList.remove('modal-open')
-  document.body.style.overflow = 'auto'
-}
-
-const goToTracking = async () => {
-  try {
-    if (!trackingTrainCode.value.trim()) {
-      trackingError.value = 'Masukkan kode kereta terlebih dahulu'
-      return
-    }
-
-    isLoadingTracking.value = true
-    trackingError.value = ''
-
-    // Navigate to tracking page
-    router.push({
-      name: 'Tracking',
-      params: {
-        train_code: trackingTrainCode.value.toUpperCase()
-      }
-    })
-
-    closeTrackingModal()
-  } catch (error) {
-    trackingError.value = 'Gagal membuka tracking. Silakan coba lagi.'
-    console.error('Error:', error)
-  } finally {
-    isLoadingTracking.value = false
-  }
-}
-
 </script>
 
 <template>
@@ -431,14 +384,6 @@ const goToTracking = async () => {
 
           <button class="search-btn" @click="searchTrains" :disabled="isSearching">
             {{ isSearching ? 'Mencari...' : 'Cari' }}
-          </button>
-
-          <button class="tracking-btn" @click="openTrackingModal" title="Lacak kereta Anda">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="currentColor" stroke-width="2"/>
-              <path d="M12 7V12L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            Tracking
           </button>
         </div>
 
@@ -810,65 +755,6 @@ const goToTracking = async () => {
           </div>
           <p class="notification-message">{{ notificationMessage }}</p>
           <button class="notification-btn" @click="closeNotificationModal">Oke</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Tracking Modal -->
-    <div v-if="showTrackingModal" class="modal-overlay" @click="closeTrackingModal">
-      <div class="modal-content tracking-modal" @click.stop>
-        <button class="modal-close" @click="closeTrackingModal">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </svg>
-        </button>
-        
-        <div class="tracking-modal-body">
-          <div class="tracking-modal-header">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="currentColor" stroke-width="2"/>
-              <path d="M12 7V12L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            <h2>Lacak Kereta</h2>
-          </div>
-
-          <p class="tracking-description">
-            Masukkan kode kereta Anda untuk melacak posisi real-time dan jadwal terkini.
-          </p>
-
-          <div class="tracking-form">
-            <div class="form-group">
-              <label class="form-label">Kode Kereta</label>
-              <div class="input-wrapper">
-                <input 
-                  v-model="trackingTrainCode"
-                  type="text" 
-                  class="form-input tracking-input"
-                  placeholder="Contoh: EXP001 atau 6"
-                  @keyup.enter="goToTracking"
-                />
-              </div>
-            </div>
-
-            <div v-if="trackingError" class="tracking-error">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
-                <path d="M12 8V12M12 16H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-              </svg>
-              <span>{{ trackingError }}</span>
-            </div>
-          </div>
-
-          <div class="tracking-modal-actions">
-            <button class="btn-cancel" @click="closeTrackingModal">Batal</button>
-            <button 
-              class="btn-track" 
-              @click="goToTracking"
-              :disabled="isLoadingTracking || !trackingTrainCode.trim()"
-            >
-              {{ isLoadingTracking ? 'Memuat...' : 'Lacak Kereta' }}
-            </button>
-          </div>
         </div>
       </div>
     </div>

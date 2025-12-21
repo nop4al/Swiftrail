@@ -17,21 +17,123 @@ const showTourismData = ref(false);
 const stations = ref([]);
 
 function openTourismModal(station) {
+  console.log('Opening tourism modal for station:', station);
   selectedStation.value = station;
   showTourismModal.value = true;
   showTourismData.value = false; // Show button first
+  
+  // Debug: log tourism data
+  if (station?.station?.tourism) {
+    console.log('Tourism data found:', station.station.tourism);
+  } else {
+    console.warn('No tourism data for this station');
+  }
 }
 
 function checkDestinations() {
   showTourismData.value = true;
 }
 
-const train = reactive({});
+function testModal() {
+  console.log('Test modal button clicked');
+  if (stations.value.length > 1) {
+    const testStation = stations.value[1]; // Cirebon
+    console.log('Testing with station:', testStation);
+    openTourismModal(testStation);
+  } else {
+    alert('No stations data available');
+  }
+}
+
+const train = reactive({
+  name: 'Loading...',
+  number: '-',
+  from: '-',
+  to: '-',
+  startTime: '--:--',
+  endTime: '--:--',
+  currentKm: 0,
+  totalKm: 800,
+  speed: 0,
+  maxSpeed: 160,
+  occupancy: 0,
+  occupancyLabel: 'Unknown',
+  delayMinutes: 0
+});
 
 const markerStation = reactive({});
 
 // Route coordinates from API
 const routeCoordinates = [];
+
+// Calculate distance between two coordinates (haversine formula)
+function calculateDistance(lat1, lng1, lat2, lng2) {
+  const R = 6371; // Earth radius in km
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLng / 2) *
+      Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Calculate total distance from all coordinates
+function calculateTotalDistance(coords) {
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    total += calculateDistance(
+      coords[i][0],
+      coords[i][1],
+      coords[i + 1][0],
+      coords[i + 1][1]
+    );
+  }
+  return total;
+}
+
+// Parse time to minutes
+function parseTimeToMinutes(timeStr) {
+  if (!timeStr) return 0;
+  const [hours, minutes] = timeStr.split(':').map(Number);
+  return hours * 60 + minutes;
+}
+
+// Get current progress based on time
+function updateTrainProgress() {
+  if (stations.value.length === 0) return;
+
+  const now = new Date();
+  const currentTimeStr = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+  const currentMinutes = parseTimeToMinutes(currentTimeStr);
+  
+  const startMinutes = parseTimeToMinutes(train.startTime);
+  const endMinutes = parseTimeToMinutes(train.endTime);
+  
+  // Handle overnight routes
+  let totalMinutes = endMinutes - startMinutes;
+  if (totalMinutes < 0) totalMinutes += 24 * 60;
+  
+  let elapsedMinutes = currentMinutes - startMinutes;
+  if (elapsedMinutes < 0) elapsedMinutes += 24 * 60;
+  
+  // If journey not started or already finished
+  if (elapsedMinutes < 0) {
+    train.currentKm = 0;
+    train.speed = 0;
+  } else if (elapsedMinutes > totalMinutes) {
+    train.currentKm = train.totalKm;
+    train.speed = 0;
+  } else {
+    // Calculate progress based on time
+    const progress = elapsedMinutes / totalMinutes;
+    train.currentKm = Math.round(train.totalKm * progress);
+    train.speed = totalMinutes > 0 ? Math.round((train.totalKm / totalMinutes) * 60) : 0;
+  }
+}
 
 const percent = computed(() => Math.round((train.currentKm / train.totalKm) * 100));
 const remainingKm = computed(() => Math.max(0, train.totalKm - train.currentKm));
@@ -40,23 +142,64 @@ train.remainingKm = remainingKm.value;
 async function fetchTrainData() {
   try {
     const trainCode = route.params.train_code;
+    let scheduleId = route.query.schedule_id;
+    const travelDate = route.query.date;
+    
+    // Fallback: parse from URL if needed
+    if (!scheduleId) {
+      const urlParams = new URLSearchParams(window.location.search);
+      scheduleId = urlParams.get('schedule_id');
+    }
+    
+    console.log('Tracking params:', { trainCode, scheduleId, travelDate });
+    
     if (!trainCode) return;
 
-    const response = await fetch(`/api/v1/tracking/${trainCode}`);
+    // If we have schedule_id from the booking, fetch data directly from booking
+    let response;
+    if (scheduleId) {
+      console.log('Fetching booking data with schedule_id:', scheduleId);
+      response = await fetch(`/api/v1/bookings/${scheduleId}`);
+      
+      // If booking endpoint fails, fall back to tracking endpoint
+      if (!response.ok) {
+        console.warn('Booking endpoint failed, falling back to tracking endpoint');
+        response = await fetch(`/api/v1/tracking/${trainCode}`);
+      }
+    } else {
+      // Fallback: fetch by train code
+      console.log('Fetching tracking data with train code:', trainCode);
+      response = await fetch(`/api/v1/tracking/${trainCode}`);
+    }
+    
     if (!response.ok) throw new Error('Failed to fetch train data');
 
     const data = await response.json();
     const trainData = data.data || data;
+    
+    console.log('Tracking data received:', trainData);
 
     // Fallback untuk parse response
-    // Jika tidak ada `stops`, fetch langsung dari trains endpoint
+    // Jika tidak ada `stops`, fetch dari tracking endpoint dengan train code
     if (!trainData.stops) {
-      const trainResponse = await fetch(`/api/v1/trains?code=${trainCode}`);
-      const trainList = await trainResponse.json();
-      // Cari train dan dapatkan stops via relationship
-      if (trainList.data && trainList.data.length > 0) {
-        const train = trainList.data[0];
-        trainData.stops = train.stops || [];
+      try {
+        // Extract train code dari booking data atau dari params
+        const code = trainData.train?.code || trainCode;
+        if (code) {
+          console.log('Fetching stops from tracking endpoint:', code);
+          const trackingResponse = await fetch(`/api/v1/tracking/${code}`);
+          
+          if (trackingResponse.ok) {
+            const trackingData = await trackingResponse.json();
+            const trackData = trackingData.data || trackingData;
+            if (trackData.stops && trackData.stops.length > 0) {
+              trainData.stops = trackData.stops;
+              console.log('Stops fetched from tracking endpoint:', trainData.stops.length);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to fetch stops from tracking endpoint:', err);
       }
     }
 
@@ -66,15 +209,30 @@ async function fetchTrainData() {
     // Populate route coordinates dari stops atau dari API response
     if (trainData.stops && trainData.stops.length > 0) {
       routeCoordinates.length = 0;
-      trainData.stops.forEach(stop => {
+      console.log('Processing stops:', trainData.stops);
+      
+      trainData.stops.forEach((stop, idx) => {
         const station = stop.station || stop;
-        const lat = station.latitude || station.lat;
-        const lng = station.longitude || station.lng;
-        if (lat && lng) {
+        const lat = station.latitude || station.lat || parseFloat(station.latitude);
+        const lng = station.longitude || station.lng || parseFloat(station.longitude);
+        
+        console.log(`Stop ${idx}: lat=${lat}, lng=${lng}, station:`, station);
+        
+        if (lat && lng && !isNaN(lat) && !isNaN(lng)) {
           routeCoordinates.push([parseFloat(lat), parseFloat(lng)]);
         }
       });
+      
+      console.log('Final routeCoordinates:', routeCoordinates);
       stations.value = trainData.stops;
+      
+      // Calculate total distance from coordinates
+      if (routeCoordinates.length > 1) {
+        train.totalKm = Math.round(calculateTotalDistance(routeCoordinates));
+        console.log('Calculated total distance:', train.totalKm, 'km');
+      }
+    } else {
+      console.warn('No stops data in trainData:', trainData);
     }
 
     // Set current marker station
@@ -87,15 +245,25 @@ async function fetchTrainData() {
     }
 
     // Populate train data dari response
+    // Handle both booking API format and tracking API format
     train.name = trainData.train?.name || trainData.name || 'Train';
-    train.number = trainData.train?.code || trainData.code || '';
+    // Try multiple fields for train code
+    const trainCodeFromData = trainData.train?.code || trainData.code || trainData.train_code || trainCode;
+    train.number = trainCodeFromData || '';
     
-    // Extract start and end stations from stops
+    // Set from/to stations - handle both API formats
     if (trainData.stops && trainData.stops.length > 0) {
+      // Format dari tracking API
       train.from = trainData.stops[0].station.name;
       train.to = trainData.stops[trainData.stops.length - 1].station.name;
       train.startTime = trainData.stops[0].departure_time || trainData.stops[0].arrival_time || '00:00';
       train.endTime = trainData.stops[trainData.stops.length - 1].arrival_time || trainData.stops[trainData.stops.length - 1].departure_time || '00:00';
+    } else if (trainData.from_station && trainData.to_station) {
+      // Format dari booking API
+      train.from = trainData.from_station?.name || trainData.from_station || 'Unknown';
+      train.to = trainData.to_station?.name || trainData.to_station || 'Unknown';
+      train.startTime = trainData.schedule?.departure_time || '00:00';
+      train.endTime = trainData.schedule?.arrival_time || '00:00';
     } else {
       train.from = 'Jakarta';
       train.to = 'Surabaya';
@@ -104,7 +272,7 @@ async function fetchTrainData() {
     }
     
     train.currentKm = trainData.overall_progress || 0;
-    train.totalKm = 800;
+    train.totalKm = trainData.total_distance || 800;
     train.speed = trainData.speed || 0;
     train.maxSpeed = 160; // Default max speed for trains
     train.occupancy = trainData.occupancy || 0;
@@ -112,17 +280,32 @@ async function fetchTrainData() {
     train.delayMinutes = trainData.delay_minutes || 0;
   } catch (error) {
     console.error('Error fetching train data:', error);
+    train.name = 'Error Loading Train Data';
+    train.from = 'Error';
+    train.to = 'Error';
   }
 }
 
 function initMap() {
-  if (!mapContainer.value || routeCoordinates.length === 0) return;
+  if (!mapContainer.value) {
+    console.error('Map container not found');
+    return;
+  }
+  
+  console.log('Initializing map. Route coordinates:', routeCoordinates);
+  console.log('Stations:', stations.value);
+  
+  if (routeCoordinates.length === 0) {
+    console.warn('No route coordinates available');
+  }
 
   // Create map centered on current train position
-  map = L.map(mapContainer.value).setView(
-    [markerStation.lat || -6.2088, markerStation.lng || 106.8456],
-    8
-  );
+  const centerLat = markerStation.lat || -6.2088;
+  const centerLng = markerStation.lng || 106.8456;
+  
+  map = L.map(mapContainer.value).setView([centerLat, centerLng], 8);
+  
+  console.log('Map created with center:', [centerLat, centerLng]);
 
   // Add OpenStreetMap tiles
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -134,36 +317,96 @@ function initMap() {
 
   markerGroup = L.featureGroup().addTo(map);
 
-  // Add route polyline
-  routePolyline = L.polyline(routeCoordinates, {
-    color: '#1675E7',
-    weight: 3,
-    opacity: 0.7,
-    dashArray: '5, 10'
-  }).addTo(map);
+  // Add route polyline if we have coordinates
+  if (routeCoordinates.length > 1) {
+    console.log('Adding route polylines');
+    
+    // Add background glow effect - orange/yellow color
+    L.polyline(routeCoordinates, {
+      color: '#F59E0B',
+      weight: 12,
+      opacity: 0.2,
+      lineCap: 'round',
+      lineJoin: 'round'
+    }).addTo(map);
+
+    // Add main route line - bold orange
+    routePolyline = L.polyline(routeCoordinates, {
+      color: '#F59E0B',
+      weight: 6,
+      opacity: 0.95,
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: 'route-line'
+    }).addTo(map);
+
+    // Add animated dashed line overlay - lighter orange
+    L.polyline(routeCoordinates, {
+      color: '#FCD34D',
+      weight: 3,
+      opacity: 0.7,
+      dashArray: '10, 5',
+      lineCap: 'round',
+      lineJoin: 'round',
+      className: 'route-line-animated'
+    }).addTo(map);
+    
+    console.log('Route polylines added successfully');
+  } else {
+    console.warn('Not enough coordinates for polyline. Length:', routeCoordinates.length);
+  }
 
   // Add markers for each station from API data
-  stations.value.forEach((stop, idx) => {
+  if (stations.value && stations.value.length > 0) {
+    console.log('Adding station markers:', stations.value.length);
+    
+    stations.value.forEach((stop, idx) => {
     const station = stop.station;
-    let color = '#F59E0B'; // middle
+    let color = '#F59E0B'; // middle - orange
     
     if (idx === 0) color = '#10B981'; // start (green)
     if (idx === stations.value.length - 1) color = '#EF4444'; // end (red)
 
+    console.log(`Adding marker ${idx}: ${station.name} at [${station.latitude}, ${station.longitude}]`);
+
+    // Determine marker size based on position
+    const markerRadius = idx === 0 || idx === stations.value.length - 1 ? 10 : 8;
+
     const marker = L.circleMarker([station.latitude, station.longitude], {
-      radius: idx === 0 || idx === stations.value.length - 1 ? 8 : 7,
+      radius: markerRadius,
       fillColor: color,
       color: '#fff',
-      weight: 2,
+      weight: 3,
       opacity: 1,
-      fillOpacity: 0.8
-    })
-      .bindPopup(`<b>${station.name}</b><br>Jadwal: ${stop.scheduledTime}`)
-      .on('click', function() {
-        openTourismModal(stop);
-      })
-      .addTo(map);
-  });
+      fillOpacity: 0.9,
+      interactive: true
+    }).addTo(map);
+
+    // Add click handler BEFORE adding to map
+    marker.on('click', function(e) {
+      console.log('Marker clicked:', station.name);
+      console.log('Stop data:', stop);
+      console.log('Has tourism:', stop.station?.tourism);
+      L.DomEvent.stopPropagation(e);
+      openTourismModal(stop);
+    });
+
+    // Add glow effect around marker
+    L.circleMarker([station.latitude, station.longitude], {
+      radius: markerRadius + 6,
+      fillColor: 'transparent',
+      color: color,
+      weight: 1,
+      opacity: 0.3,
+      fillOpacity: 0,
+      className: 'marker-glow'
+    }).addTo(map);
+    });
+    
+    console.log('Station markers added');
+  } else {
+    console.warn('No stations to add');
+  }
 
   // Add current train position marker
   const trainIcon = L.divIcon({
@@ -190,13 +433,25 @@ function initMap() {
     .addTo(map);
 
   // Fit bounds to show entire route
-  const bounds = L.latLngBounds(routeCoordinates);
-  map.fitBounds(bounds, { padding: [50, 50] });
+  if (routeCoordinates.length > 1) {
+    const bounds = L.latLngBounds(routeCoordinates);
+    map.fitBounds(bounds, { padding: [50, 50] });
+    console.log('Map bounds fitted');
+  }
 }
 
 onMounted(async () => {
   await fetchTrainData();
   initMap();
+  
+  // Update progress every second
+  updateTrainProgress();
+  const updateInterval = setInterval(updateTrainProgress, 1000);
+  
+  // Cleanup on unmount
+  return () => {
+    clearInterval(updateInterval);
+  };
 });
 </script>
 
@@ -209,6 +464,13 @@ onMounted(async () => {
       <div class="card-title">
         <svg class="icon" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 11 7 11s7-5.75 7-11c0-3.87-3.13-7-7-7zM12 11.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z"/></svg>
         Live Tracking - {{ train.name }}
+        <button 
+          class="test-modal-btn"
+          @click="testModal"
+          title="Test tourism modal"
+        >
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>
+        </button>
       </div>
 
       <div id="map" class="map-container" ref="mapContainer">
@@ -220,7 +482,17 @@ onMounted(async () => {
     <div v-if="showTourismModal" class="modal-overlay" @click="showTourismModal = false">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h2>{{ selectedStation?.name }}</h2>
+          <div>
+            <h2>{{ selectedStation?.station?.name }}</h2>
+            <div class="station-schedule-badge">
+              <span v-if="selectedStation?.arrival_time" class="badge arrival">
+                📍 Datang: {{ selectedStation.arrival_time }}
+              </span>
+              <span v-if="selectedStation?.departure_time" class="badge departure">
+                🚂 Berangkat: {{ selectedStation.departure_time }}
+              </span>
+            </div>
+          </div>
           <button class="close-btn" @click="showTourismModal = false">×</button>
         </div>
         <div class="modal-body">
@@ -230,7 +502,10 @@ onMounted(async () => {
                 <circle cx="12" cy="12" r="10"></circle>
                 <polyline points="12 6 12 12 16 14"></polyline>
               </svg>
-              Jadwal: {{ selectedStation?.scheduledTime }}
+              Kode Stasiun: <strong>{{ selectedStation?.station?.code }}</strong>
+            </p>
+            <p class="station-location" style="color: #666; font-size: 13px; margin: 8px 0;">
+              📍 Lokasi: {{ selectedStation?.station?.city || 'Indonesia' }}
             </p>
             <p class="description">Temukan destinasi wisata menarik di sekitar stasiun {{ selectedStation?.station?.name }}</p>
             <button class="btn-check-destination" @click="checkDestinations">
@@ -241,13 +516,15 @@ onMounted(async () => {
             </button>
           </div>
           <div v-else class="tourism-section">
-            <p class="station-info">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polyline points="12 6 12 12 16 14"></polyline>
-              </svg>
-              Jadwal: {{ selectedStation?.scheduledTime }}
-            </p>
+            <div class="station-info-detail">
+              <p style="margin: 0 0 12px 0;">
+                <strong>📍 {{ selectedStation?.station?.name }}</strong><br>
+                <span style="color: #666; font-size: 12px;">
+                  Datang: <strong style="color: #10B981;">{{ selectedStation?.arrival_time || '-' }}</strong> | 
+                  Berangkat: <strong style="color: #F59E0B;">{{ selectedStation?.departure_time || '-' }}</strong>
+                </span>
+              </p>
+            </div>
             <h3>Rekomendasi Wisata Terdekat</h3>
             <div class="tourism-list">
               <div v-if="!selectedStation?.station?.tourism || selectedStation.station.tourism.length === 0" class="no-data">
@@ -319,6 +596,16 @@ onMounted(async () => {
         </div>
         <button class="status-btn">Dalam Perjalanan</button>
       </div>
+
+      <!-- Test Tourism Modal Button -->
+      <button 
+        class="test-modal-btn-card"
+        @click="testModal"
+        title="Test tourism modal"
+      >
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/></svg>
+        Test Modal (Cirebon)
+      </button>
 
       <div class="progress-section">
         <div class="progress-row">
@@ -393,6 +680,19 @@ onMounted(async () => {
           <p class="stat-meta">dari {{ train.totalKm }} km</p>
         </div>
       </div>
+
+      <div class="stat-card progress">
+        <div class="stat-icon-wrapper blue">
+          <div class="stat-icon">
+            <svg viewBox="0 0 24 24"><path fill="currentColor" d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5z"/></svg>
+          </div>
+        </div>
+        <div class="stat-content">
+          <p class="stat-label">Progress</p>
+          <p class="stat-value">{{ percent }}%</p>
+          <p class="stat-meta">Sisa: {{ remainingKm }} km</p>
+        </div>
+      </div>
     </section>
 
     <!-- Placeholder for additional content -->
@@ -447,6 +747,64 @@ onMounted(async () => {
   background: linear-gradient(135deg, #f0f7ff 0%, #f0f4ff 100%);
   border-bottom: 1px solid #e5e7eb;
   margin: 0;
+  justify-content: space-between;
+}
+
+.test-modal-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #10B981;
+  flex-shrink: 0;
+}
+
+.test-modal-btn:hover {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: #10B981;
+  transform: scale(1.05);
+}
+
+.test-modal-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.test-modal-btn-card {
+  width: 100%;
+  padding: 12px 16px;
+  margin-bottom: 16px;
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(16, 185, 129, 0.05) 100%);
+  border: 2px solid rgba(16, 185, 129, 0.3);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: #10B981;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.test-modal-btn-card:hover {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(16, 185, 129, 0.1) 100%);
+  border-color: #10B981;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.test-modal-btn-card svg {
+  width: 20px;
+  height: 20px;
 }
 
 .icon {
@@ -648,6 +1006,10 @@ onMounted(async () => {
   background: linear-gradient(90deg, #3B82F6, #60A5FA);
 }
 
+.stat-card.progress::before {
+  background: linear-gradient(90deg, #3B82F6, #60A5FA);
+}
+
 .stat-card:hover {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
   transform: translateY(-2px);
@@ -785,7 +1147,7 @@ onMounted(async () => {
 .modal-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: flex-start;
   padding: 20px 24px;
   background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
   color: var(--color-white);
@@ -793,8 +1155,56 @@ onMounted(async () => {
 }
 
 .modal-header h2 {
-  margin: 0;
+  margin: 0 0 12px 0;
   font-size: 20px;
+  font-weight: 700;
+}
+
+.station-schedule-badge {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+
+.station-schedule-badge .badge {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.station-schedule-badge .badge.arrival {
+  background-color: rgba(16, 185, 129, 0.25);
+  color: #c6f6d5;
+  border: 1px solid rgba(16, 185, 129, 0.4);
+}
+
+.station-schedule-badge .badge.departure {
+  background-color: rgba(245, 158, 11, 0.25);
+  color: #fef3c7;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.station-info-detail {
+  background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  padding: 14px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  border-left: 4px solid var(--color-primary);
+}
+
+.station-info-detail p {
+  margin: 4px 0;
+  font-size: 13px;
+  color: #333;
+}
+
+.station-info-detail strong {
+  color: var(--color-primary);
   font-weight: 700;
 }
 
@@ -1144,6 +1554,10 @@ onMounted(async () => {
   animation: pulse 2s infinite;
 }
 
+.marker-glow {
+  animation: markerPulse 2s infinite;
+}
+
 @keyframes pulse {
   0%,
   100% {
@@ -1151,6 +1565,16 @@ onMounted(async () => {
   }
   50% {
     filter: drop-shadow(0 2px 8px rgba(22, 117, 231, 0.6));
+  }
+}
+
+@keyframes markerPulse {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.6;
   }
 }
 
@@ -1163,6 +1587,25 @@ onMounted(async () => {
     opacity: 1;
     transform: scale(1);
   }
+}
+
+@keyframes dashSlide {
+  0% {
+    stroke-dashoffset: 0;
+  }
+  100% {
+    stroke-dashoffset: -14;
+  }
+}
+
+/* Route line animations */
+.route-line {
+  filter: drop-shadow(0 3px 6px rgba(245, 158, 11, 0.3));
+}
+
+.route-line-animated {
+  animation: dashSlide 20s linear infinite;
+  filter: drop-shadow(0 2px 4px rgba(252, 211, 77, 0.4));
 }
 
 /* Leaflet popup styling */

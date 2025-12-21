@@ -131,6 +131,7 @@
             <div class="ticket-actions">
               <button class="btn-secondary" @click="viewETicket(ticket)">Lihat E-Tiket</button>
               <button class="btn-secondary" @click="shareTicket(ticket)">Bagikan</button>
+              <button class="btn-secondary tracking-btn" @click="goToTracking(ticket)">Tracking</button>
             </div>
           </div>
         </div>
@@ -603,6 +604,22 @@ function shareTicket(ticket) {
     alert('Informasi tiket disalin ke clipboard');
   }
 }
+
+function goToTracking(ticket) {
+  if (ticket && ticket.trainCode) {
+    router.push({
+      name: 'Tracking',
+      params: {
+        train_code: ticket.trainCode.toUpperCase()
+      },
+      query: {
+        date: ticket.departureDate,
+        schedule_id: ticket.id,
+        booking_code: ticket.bookingCode
+      }
+    });
+  }
+}
 </script>
 
 <style scoped>
@@ -1069,10 +1086,12 @@ function shareTicket(ticket) {
 .ticket-actions {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .btn-secondary {
   flex: 1;
+  min-width: 100px;
   padding: 10px 16px;
   background: var(--color-white);
   color: var(--color-primary);
