@@ -1,7 +1,28 @@
 import axios from 'axios'
 
-// Setup base URL - gunakan environment variable atau default /api/v1
-const apiBaseURL = import.meta.env.VITE_API_URL || '/api/v1'
+// Setup base URL - auto-detect IP address untuk akses cross-device
+// Jika akses dari IP apapun, akan otomatis ke backend di IP yang sama
+const getApiBaseURL = () => {
+  // Check if environment variable is set (untuk production atau custom setup)
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL
+  }
+  
+  // Auto-detect untuk development: gunakan IP yang sama seperti frontend
+  // dengan port backend Laravel (default 8000)
+  const hostname = window.location.hostname
+  const protocol = window.location.protocol
+  
+  // Jika localhost/127.0.0.1, gunakan path relatif
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    return '/api/v1'
+  }
+  
+  // Jika IP address lain, construct full URL ke backend
+  return `${protocol}//${hostname}:8000/api/v1`
+}
+
+const apiBaseURL = getApiBaseURL()
 
 // Create axios instance
 const axiosInstance = axios.create({
