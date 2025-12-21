@@ -89,15 +89,27 @@ async function fetchTrainData() {
     // Populate train data dari response
     train.name = trainData.train?.name || trainData.name || 'Train';
     train.number = trainData.train?.code || trainData.code || '';
-    train.from = 'Jakarta';
-    train.to = 'Surabaya';
+    
+    // Extract start and end stations from stops
+    if (trainData.stops && trainData.stops.length > 0) {
+      train.from = trainData.stops[0].station.name;
+      train.to = trainData.stops[trainData.stops.length - 1].station.name;
+      train.startTime = trainData.stops[0].departure_time || trainData.stops[0].arrival_time || '00:00';
+      train.endTime = trainData.stops[trainData.stops.length - 1].arrival_time || trainData.stops[trainData.stops.length - 1].departure_time || '00:00';
+    } else {
+      train.from = 'Jakarta';
+      train.to = 'Surabaya';
+      train.startTime = '14:30';
+      train.endTime = '22:00';
+    }
+    
     train.currentKm = trainData.overall_progress || 0;
     train.totalKm = 800;
     train.speed = trainData.speed || 0;
+    train.maxSpeed = 160; // Default max speed for trains
     train.occupancy = trainData.occupancy || 0;
+    train.occupancyLabel = train.occupancy > 75 ? 'Penuh' : train.occupancy > 50 ? 'Agak Penuh' : train.occupancy > 25 ? 'Sedang' : 'Kosong';
     train.delayMinutes = trainData.delay_minutes || 0;
-    train.startTime = '14:30';
-    train.endTime = '22:00';
   } catch (error) {
     console.error('Error fetching train data:', error);
   }

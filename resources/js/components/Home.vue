@@ -59,6 +59,12 @@ const showNotificationModal = ref(false)
 const notificationMessage = ref('')
 const notificationType = ref('info') // 'info', 'warning', 'error', 'success'
 
+// Modal untuk tracking search
+const showTrackingModal = ref(false)
+const trackingTrainCode = ref('')
+const isLoadingTracking = ref(false)
+const trackingError = ref('')
+
 // Fetch data saat component mounted
 onMounted(async () => {
   try {
@@ -245,6 +251,47 @@ const searchTrains = async () => {
   }
 }
 
+const openTrackingModal = () => {
+  showTrackingModal.value = true
+  trackingTrainCode.value = ''
+  trackingError.value = ''
+  document.body.classList.add('modal-open')
+  document.body.style.overflow = 'hidden'
+}
+
+const closeTrackingModal = () => {
+  showTrackingModal.value = false
+  document.body.classList.remove('modal-open')
+  document.body.style.overflow = 'auto'
+}
+
+const goToTracking = async () => {
+  try {
+    if (!trackingTrainCode.value.trim()) {
+      trackingError.value = 'Masukkan kode kereta terlebih dahulu'
+      return
+    }
+
+    isLoadingTracking.value = true
+    trackingError.value = ''
+
+    // Navigate to tracking page
+    router.push({
+      name: 'Tracking',
+      params: {
+        train_code: trackingTrainCode.value.toUpperCase()
+      }
+    })
+
+    closeTrackingModal()
+  } catch (error) {
+    trackingError.value = 'Gagal membuka tracking. Silakan coba lagi.'
+    console.error('Error:', error)
+  } finally {
+    isLoadingTracking.value = false
+  }
+}
+
 </script>
 
 <template>
@@ -384,6 +431,14 @@ const searchTrains = async () => {
 
           <button class="search-btn" @click="searchTrains" :disabled="isSearching">
             {{ isSearching ? 'Mencari...' : 'Cari' }}
+          </button>
+
+          <button class="tracking-btn" @click="openTrackingModal" title="Lacak kereta Anda">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 7V12L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Tracking
           </button>
         </div>
 
@@ -758,6 +813,65 @@ const searchTrains = async () => {
         </div>
       </div>
     </div>
+
+    <!-- Tracking Modal -->
+    <div v-if="showTrackingModal" class="modal-overlay" @click="closeTrackingModal">
+      <div class="modal-content tracking-modal" @click.stop>
+        <button class="modal-close" @click="closeTrackingModal">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 6L6 18M6 6L18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+        
+        <div class="tracking-modal-body">
+          <div class="tracking-modal-header">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21Z" stroke="currentColor" stroke-width="2"/>
+              <path d="M12 7V12L16 16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            <h2>Lacak Kereta</h2>
+          </div>
+
+          <p class="tracking-description">
+            Masukkan kode kereta Anda untuk melacak posisi real-time dan jadwal terkini.
+          </p>
+
+          <div class="tracking-form">
+            <div class="form-group">
+              <label class="form-label">Kode Kereta</label>
+              <div class="input-wrapper">
+                <input 
+                  v-model="trackingTrainCode"
+                  type="text" 
+                  class="form-input tracking-input"
+                  placeholder="Contoh: EXP001 atau 6"
+                  @keyup.enter="goToTracking"
+                />
+              </div>
+            </div>
+
+            <div v-if="trackingError" class="tracking-error">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 8V12M12 16H12.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+              <span>{{ trackingError }}</span>
+            </div>
+          </div>
+
+          <div class="tracking-modal-actions">
+            <button class="btn-cancel" @click="closeTrackingModal">Batal</button>
+            <button 
+              class="btn-track" 
+              @click="goToTracking"
+              :disabled="isLoadingTracking || !trackingTrainCode.trim()"
+            >
+              {{ isLoadingTracking ? 'Memuat...' : 'Lacak Kereta' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -996,6 +1110,34 @@ const searchTrains = async () => {
 }
 
 .search-btn:active {
+  transform: translateY(0);
+}
+
+.tracking-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-primary);
+  background: linear-gradient(135deg, rgba(22, 117, 231, 0.1) 0%, rgba(34, 197, 94, 0.1) 100%);
+  border: 2px solid var(--color-primary);
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(22, 117, 231, 0.15);
+  flex-shrink: 0;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.tracking-btn:hover {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: var(--color-white);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(22, 117, 231, 0.3);
+}
+
+.tracking-btn:active {
   transform: translateY(0);
 }
 
@@ -1589,8 +1731,19 @@ const searchTrains = async () => {
   
   .booking-form {
     padding: 1rem;
+    flex-wrap: wrap;
   }
-  
+
+  .search-btn,
+  .tracking-btn {
+    padding: 0.75rem 1.25rem;
+    font-size: 0.9rem;
+  }
+
+  .tracking-btn {
+    min-width: 100px;
+  }
+
   .footer-links {
     grid-template-columns: 1fr;
   }
@@ -2263,6 +2416,139 @@ const searchTrains = async () => {
   text-align: center;
   color: var(--color-text-light);
 }
+
+/* Tracking Modal */
+.tracking-modal {
+  max-width: 420px;
+}
+
+.tracking-modal-body {
+  padding: 2rem 1.5rem;
+}
+
+.tracking-modal-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  color: var(--color-primary);
+}
+
+.tracking-modal-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--color-text-dark);
+}
+
+.tracking-description {
+  font-size: 0.95rem;
+  color: var(--color-text-light);
+  margin-bottom: 2rem;
+  line-height: 1.6;
+}
+
+.tracking-form {
+  margin-bottom: 2rem;
+}
+
+.tracking-input {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 2px solid #e5e7eb;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.tracking-input:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(22, 117, 231, 0.1);
+}
+
+.tracking-error {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: #fee;
+  color: #c33;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  margin-top: 0.75rem;
+}
+
+.tracking-error svg {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+}
+
+.tracking-modal-actions {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-cancel,
+.btn-track {
+  flex: 1;
+  padding: 0.875rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.btn-cancel {
+  background: #f0f0f0;
+  color: var(--color-text-dark);
+}
+
+.btn-cancel:hover {
+  background: #e5e5e5;
+}
+
+.btn-track {
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-secondary) 100%);
+  color: white;
+  box-shadow: 0 4px 12px rgba(22, 117, 231, 0.3);
+}
+
+.btn-track:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(22, 117, 231, 0.4);
+}
+
+.btn-track:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.modal-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: none;
+  border: none;
+  font-size: 1.5rem;
+  cursor: pointer;
+  color: var(--color-text-dark);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  transition: all 0.3s ease;
+}
+
+.modal-close:hover {
+  background: #f0f0f0;
+}
+
 
 .no-results p {
   font-size: 1rem;
