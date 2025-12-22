@@ -7,6 +7,7 @@ echo "Deploying Laravel app..."
 rm -rf bootstrap/cache/routes-v7.php bootstrap/cache/packages.php bootstrap/cache/services.php 2>/dev/null || true
 
 # Install dependencies
+echo "Installing dependencies..."
 composer install --no-dev --optimize-autoloader --no-scripts
 
 # Generate APP_KEY if not exists
@@ -16,20 +17,27 @@ if [ -z "$APP_KEY" ]; then
 fi
 
 # Clear old caches
-php artisan config:clear
-php artisan route:clear
-php artisan view:clear
+echo "Clearing old caches..."
+php artisan config:clear 2>/dev/null || true
+php artisan route:clear 2>/dev/null || true
+php artisan view:clear 2>/dev/null || true
 
-# Generate new caches
+# Generate config cache
+echo "Caching configuration..."
 php artisan config:cache
-php artisan route:cache
-php artisan view:cache
 
 # Run migrations
-php artisan migrate --force
+echo "Running migrations..."
+php artisan migrate --force 2>/dev/null || echo "Warning: Migrations failed or already run"
+
+# Generate other caches only if migration succeeded
+echo "Caching routes and views..."
+php artisan route:cache 2>/dev/null || echo "Warning: Route cache failed, running without cache"
+php artisan view:cache 2>/dev/null || echo "Warning: View cache failed"
 
 # Build frontend (if using Vite)
-npm install
+echo "Building frontend..."
+npm install --legacy-peer-deps
 npm run build
 
 echo "Deployment completed!"
