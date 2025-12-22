@@ -53,7 +53,7 @@ class TransitConstants
             'discount' => 'Gratis',
             'shortDesc' => 'Voucher makan senilai Rp50k',
             'image' => 'https://images.unsplash.com/photo-1555939594-58d7cb561a1f?w=500&h=300&fit=crop',
-            'description' => 'Dapatkan voucher makan gratis senilai Rp 50.000 untuk digunakan di merchant makanan di terminal keberangkatan Anda. Voucher dapat ditukar dengan berbagai pilihan kuliner.',
+            'description' => 'Dapatkan voucher makan gratis senilai Rp 50.000 untuk digunakan di  makanan di terminal keberangkatan Anda. Voucher dapat ditukar dengan berbagai pilihan kuliner.',
             'duration' => '30 Januari 2025',
             'terms' => [
                 'Voucher berlaku untuk 1 kali transaksi',
