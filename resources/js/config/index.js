@@ -8,7 +8,7 @@ export const appConfig = {
 
 // Konfigurasi API
 export const apiConfig = {
-  baseURL: 'http://localhost:8000/api/v1',
+  baseURL: 'https://swiftrail.up.railway.app/api/v1',
   timeout: 10000,
 }
 
